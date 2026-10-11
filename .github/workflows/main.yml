@@ -2,7 +2,7 @@ name: Fair Line update
 
 on:
   schedule:
-    - cron: "7 */2 * * *"
+    - cron: "4,19,34,49 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -15,10 +15,12 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 12
     steps:
       - name: Get the files
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Update the data
         env:
@@ -30,11 +32,34 @@ jobs:
         run: |
           git config user.name "fair-line-bot"
           git config user.email "fair-line-bot@users.noreply.github.com"
+          branch="${GITHUB_REF_NAME:-main}"
           git add data
           if git diff --cached --quiet; then
             echo "Nothing changed"
+            exit 0
+          fi
+          before=$(git rev-parse HEAD)
+          saved=no
+          if [ "$(git log -1 --pretty=%an)" = "fair-line-bot" ] && [ "$(git log -1 --pretty=%s)" = "Update data" ] && git rev-parse -q --verify "HEAD^" >/dev/null; then
+            # The last save was also a data update: replace it instead of stacking a new one,
+            # so updating every 15 minutes does not make the repository grow without end.
+            git commit -q --amend --reset-author -m "Update data"
+            if git push -q --force-with-lease="$branch:$before" origin "HEAD:$branch"; then saved=yes; fi
           else
-            git commit -m "Update data"
-            git pull --rebase
-            git push
+            git commit -q -m "Update data"
+            if git push -q origin "HEAD:$branch"; then saved=yes; fi
+          fi
+          if [ "$saved" = no ]; then
+            # Something else changed the repository during this run (usually a file upload),
+            # or replacing a save is not allowed here. Put this run's data on top of what is there now.
+            keep="$(mktemp -d)"
+            cp -R data/. "$keep/"
+            git fetch -q --depth 2 origin "$branch"
+            git reset -q --hard FETCH_HEAD
+            cp -R "$keep/." data/
+            git add data
+            if ! git diff --cached --quiet; then
+              git commit -q -m "Update data"
+              git push -q origin "HEAD:$branch"
+            fi
           fi
