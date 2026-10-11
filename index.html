@@ -285,7 +285,10 @@ details > summary::-webkit-details-marker { display: none; }
 .xl { display: flex; justify-content: space-between; margin: 6px 8px 0 54px; font-size: 11px; color: var(--ink-2); }
 .cmp-note { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
 .cmp-note b { color: var(--ink); font-weight: 700; }
-.picks td { overflow-wrap: anywhere; } .picks td:first-child { width: 36%; } .picks td.r { overflow-wrap: normal; }
+.picks td { overflow-wrap: break-word; padding-left: 5px; font-size: 13px; } .picks th { padding-left: 5px; } .picks .small { font-size: 12px; }
+.picks td:nth-child(2) { font-size: 12.5px; } .picks .amt { font-weight: 600; }
+.picks td:first-child, .picks th:first-child { padding-left: 0; }
+.picks .alloc .num { font-weight: 600; font-size: 13.5px; }
 .picks td b + .num { white-space: nowrap; }
 .cmp tr.on td { font-weight: 700; } .cmp td:first-child { white-space: nowrap; }
 </style>
@@ -1076,7 +1079,7 @@ details > summary::-webkit-details-marker { display: none; }
       : esc(outLabel(ev, r.market, r.outcome, o.point)) + ' <span class="num">(' + FL.fmtAm(o.price) + ')</span>';
     var kind = r.market === 'h2h' ? 'To win' : r.market === 'spreads' ? 'Point spread' : r.market === 'totals' ? 'Total' : 'To win it all';
     var h = '<article class="rec' + (low ? ' low' : '') + '"><div class="r-meta"><b>' + esc(ev.sport_title) + '</b><span>' + esc(when(ev)) + '</span><span>' + (ev.outright ? esc(ev.title || '') : esc(nm(ev, 'away')) + ' at ' + esc(nm(ev, 'home'))) + '</span></div>';
-    h += '<div class="r-pick"><div><h3>' + pick + '</h3><p>' + kind + ' at <b>' + esc(meta(o.book, o.title).name) + '</b> · paper stake <span class="num">' + money(stakeFor({ conf: c.score, ev: o.ev, dec: o.dec })) + '</span></p></div><div class="r-edge">' + edgeTxt(o.ev) + '<small>edge</small></div></div>';
+    h += '<div class="r-pick"><div><h3>' + pick + '</h3><p>' + kind + ' at <b>' + esc(meta(o.book, o.title).name) + '</b> · allocation <span class="num">' + money(stakeFor({ conf: c.score, ev: o.ev, dec: o.dec })) + '</span></p></div><div class="r-edge">' + edgeTxt(o.ev) + '<small>edge</small></div></div>';
     h += '<div class="meter"><span>Confidence</span><div class="bar' + bar + '"><i style="width:' + c.score + '%"></i></div><span><span class="num">' + c.score + '</span> · ' + lab + '</span></div>';
     h += '<dl class="nums"><div><dt>App odds</dt><dd>' + pct(o.pApp) + ' <small>fair ' + FL.fmtAm(FL.probToAm(o.pApp)) + '</small></dd></div>' +
       '<div><dt>Price needs</dt><dd>' + pct(o.implied) + ' <small>to break even</small></dd></div>' +
@@ -1274,6 +1277,7 @@ details > summary::-webkit-details-marker { display: none; }
     if (!A.graded) h += '<h2>Nothing has been graded yet</h2><p>The app logs a paper bet each time a price at your default books clears the default bar (edge ≥ ' + minE + '%, confidence ≥ ' + minC + '). ' + (wait || 'None has been logged so far.') + '</p>';
     else h += '<h2>How the picks have done</h2><p>' + A.graded + ' paper ' + (A.graded === 1 ? 'bet' : 'bets') + ', <b>' + money(A.staked) + '</b> staked in total, <b>' + money(A.profit, true) + '</b> profit. That is ' + edgeTxt(A.roi) + ' on the money staked.' +
       (A.graded < 200 ? ' That is too few bets to tell skill from luck; a few hundred are needed.' : '') + (wait ? ' ' + wait : '') + '</p>';
+    if (PICKS && PICKS.started_at) h += '<p class="muted small">Record started ' + esc(fmtCap.format(Date.parse(PICKS.started_at))) + '. Only bets logged since then are counted.</p>';
     h += '</div></div>';
     if (A.graded) {
       h += '<h2 class="sec-h">Running profit<small>' + A.graded + (A.graded === 1 ? ' bet' : ' bets') + ', sized three ways</small></h2><div class="chartcard">' + chartHtml(TT);
@@ -1297,26 +1301,29 @@ details > summary::-webkit-details-marker { display: none; }
     }
     if (P.length) {
       var recent = P.slice().sort(function (a, b) { return Date.parse(b.commence_time) - Date.parse(a.commence_time); }).slice(0, 80);
-      h += '<h2 class="sec-h">Picks<small>latest ' + recent.length + ' of ' + P.length + '</small></h2><table class="plain picks"><thead><tr><th>Pick</th><th>Game</th><th class="r">Result</th></tr></thead><tbody>';
+      h += '<h2 class="sec-h">Picks<small>latest ' + recent.length + ' of ' + P.length + '</small></h2><div class="scroll"><table class="plain picks"><thead><tr><th>Pick</th><th>Game</th><th class="r">Allocation</th><th class="r">Result</th></tr></thead><tbody>';
       recent.forEach(function (p) {
-        var st = stakeFor(betOf(p)), pr = profitOf(p, st);
+        var st = stakeFor(betOf(p)), pr = profitOf(p, st), share = Math.round(st / state.stake * 100);
         var cls = p.status === 'won' ? 'good' : p.status === 'lost' ? 'bad' : 'mute';
-        var res = p.status === 'pending' ? 'Pending' : p.status === 'won' ? 'Won ' + money(pr, true) : p.status === 'lost' ? 'Lost ' + money(pr, true) : p.status === 'push' ? 'Push ' + money(0) : 'No result';
-        h += '<tr><td><b>' + esc(p.label) + '</b> <span class="num">' + FL.fmtAm(p.price) + '</span><br><span class="muted small">' + esc(p.book_title || p.book) + '<br>edge ' + edgeTxt(p.ev) + '</span></td>' +
+        var res = p.status === 'pending' ? 'Pending' : p.status === 'won' ? 'Won' : p.status === 'lost' ? 'Lost' : p.status === 'push' ? 'Push' : 'No result';
+        var amt = p.status === 'won' || p.status === 'lost' || p.status === 'push' ? '<br><span class="num amt">' + money(pr, true) + '</span>' : '';
+        h += '<tr><td><b>' + esc(p.label) + '</b> <span class="num">' + FL.fmtAm(p.price) + '</span><br><span class="muted small">' + esc(p.book_title || p.book) + '<br>edge ' + edgeTxt(p.ev) + (p.clv == null ? '' : '<br>' + (p.status === 'pending' ? 'line so far ' : 'vs close ') + edgeTxt(p.clv)) + '</span></td>' +
           '<td>' + esc(p.away) + ' at ' + esc(p.home) + '<br><span class="muted small">' + esc(p.sport_title) + ' · ' + esc(fmtDate.format(Date.parse(p.commence_time))) + (p.score ? '<br>' + esc(p.score) : '') + '</span></td>' +
-          '<td class="r"><span class="pill ' + cls + '">' + res + '</span><br><span class="muted small">' + (p.status === 'void' ? 'stake returned' : '<span class="num">' + money(st) + '</span> · conf ' + p.conf) + (p.clv == null ? '' : '<br>' + (p.status === 'pending' ? 'line so far ' : 'vs close ') + edgeTxt(p.clv)) + '</span></td></tr>';
+          '<td class="r alloc">' + (p.status === 'void' ? '<span class="muted">–</span>' : '<span class="num">' + money(st) + '</span><br><span class="muted small">' + share + '% of base</span>') + '</td>' +
+          '<td class="r"><span class="pill ' + cls + '">' + res + '</span>' + amt + '<br><span class="muted small">conf ' + p.conf + '</span></td></tr>';
       });
-      h += '</tbody></table>';
+      h += '</tbody></table></div>';
     }
     h += '<div class="doc"><div><h2>How to read this page</h2><ul>' +
       '<li><b>Profit</b> is what the paper bets would have made in dollars. On a ' + money(state.stake) + ' stake, a winning +150 bet earns ' + money(state.stake * 1.5) + ', a losing bet costs the ' + money(state.stake) + ', and a push returns the stake.</li>' +
       '<li><b>Return</b> is profit divided by the money staked. Use it to compare the three ways of sizing, because they stake different totals.</li>' +
+      '<li><b>Allocation</b> is the amount each bet gets under the sizing you chose, in dollars and as a share of the base stake. For a pending bet it is the amount to put down under that rule; for a finished bet it is what was staked. The base stake is your per-bet unit, not your whole purse.</li>' +
       '<li><b>By confidence</b> stakes the base times the confidence score the bet had when it was logged, so bets the app trusts more carry more money. It only pays off if higher-confidence bets really do better, which the Confidence table shows over time.</li>' +
       '<li><b>Kelly method</b> stakes in proportion to the edge divided by the payout, so a bigger edge stakes more and a long shot stakes less. It is scaled so a 3% edge at +100 stakes the base, and capped at five times the base. It trusts the app’s edge estimate fully, so it is only as good as that estimate.</li>' +
       '<li><b>Beat the close by</b> compares the price the app took with the fair line the last time it was seen before the game. Positive means the market moved toward the pick. It is the fastest fair test of a betting method, and it shows up long before profit does.</li>' +
       '<li><b>A few picks prove nothing.</b> With edges of 2 to 4%, it takes several hundred graded bets before profit can be told apart from luck.</li>' +
       '<li><b>Only game bets in sports with a results feed are tracked:</b> the major US leagues, the big soccer leagues and UFC. Golf, tennis and boxing bets appear under Value bets but are not logged here.</li>' +
-      '<li><b>These are paper bets.</b> The app never places a bet, and a paper stake is not advice on how much to bet.</li></ul></div></div>';
+      '<li><b>These are paper bets.</b> The app never places a bet. An allocation is a sizing rule applied to picks that are not yet proven, so only bet what you can afford to lose.</li></ul></div></div>';
     return h;
   }
 
