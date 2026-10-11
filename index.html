@@ -251,6 +251,43 @@ details > summary::-webkit-details-marker { display: none; }
 .out-t td:first-child, .out-t th:first-child { text-align: left; padding-left: 0; white-space: normal; font-weight: 600; }
 .loading { padding: 40px 0; text-align: center; color: var(--ink-2); }
 .steps { margin: 8px 0 0; padding-left: 20px; color: var(--ink); display: flex; flex-direction: column; gap: 4px; }
+/* ---- record: paper stakes and running profit ---- */
+.stake { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; }
+.stake-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.stake-row label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 700; }
+.stake select { border: 1px solid var(--rule); border-radius: 7px; background: var(--paper); color: var(--ink); padding: 7px 8px; font-family: var(--mono); font-stretch: 80%; font-size: 15px; font-weight: 600; }
+.stake p { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.tile dd.up { color: var(--good); } .tile dd.down { color: var(--bad); }
+.chartcard { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 14px 10px; max-width: 760px; min-width: 0; }
+:root { --s1: #1E46C7; --s2: #EB6834; --s3: #C2387E; }   /* chart series: same stake, by confidence, Kelly */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --s1: #3987E5; --s2: #D95926; --s3: #C255AE; } }
+:root[data-theme="dark"] { --s1: #3987E5; --s2: #D95926; --s3: #C255AE; }
+.chart { margin: 0; }
+.cmp { margin-top: 12px; }
+.plot { position: relative; height: 172px; margin: 4px 8px 0 54px; touch-action: pan-y; cursor: crosshair; border-radius: 2px; }
+.plot:focus { outline: none; } .plot:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+.plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.plot line, .plot polyline { fill: none; vector-effect: non-scaling-stroke; }
+.plot .grid { stroke: var(--rule); stroke-width: 1; } .plot .zero { stroke: var(--ink-2); stroke-width: 1; }
+.plot polyline { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.plot polyline.s1 { stroke: var(--s1); } .plot polyline.s2 { stroke: var(--s2); } .plot polyline.s3 { stroke: var(--s3); }
+.yl { position: absolute; right: 100%; transform: translateY(-50%); padding-right: 8px; font-family: var(--mono); font-stretch: 80%; font-size: 10.5px; color: var(--ink-2); white-space: nowrap; }
+.end { position: absolute; left: 100%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--card); pointer-events: none; }
+.end.s1 { background: var(--s1); } .end.s2 { background: var(--s2); } .end.s3 { background: var(--s3); }
+.cross { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; background: var(--ink-2); pointer-events: none; }
+.tip { position: absolute; top: 0; z-index: 3; background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 9px; font-size: 12px; line-height: 1.45; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14); pointer-events: none; width: max-content; max-width: 210px; }
+.tip-h { color: var(--ink-2); margin-bottom: 3px; }
+.tip-r { display: flex; align-items: center; gap: 0 7px; white-space: nowrap; }
+.tip-r b { font-family: var(--mono); font-stretch: 80%; font-weight: 600; } .tip-r span { color: var(--ink-2); }
+.key { display: inline-block; flex: none; width: 14px; height: 0; border-top: 2px solid var(--ink-2); border-radius: 1px; vertical-align: middle; margin-right: 7px; }
+.tip-r .key { margin-right: 0; }
+.key.s1 { border-top-color: var(--s1); } .key.s2 { border-top-color: var(--s2); } .key.s3 { border-top-color: var(--s3); }
+.xl { display: flex; justify-content: space-between; margin: 6px 8px 0 54px; font-size: 11px; color: var(--ink-2); }
+.cmp-note { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.cmp-note b { color: var(--ink); font-weight: 700; }
+.picks td { overflow-wrap: anywhere; } .picks td:first-child { width: 36%; } .picks td.r { overflow-wrap: normal; }
+.picks td b + .num { white-space: nowrap; }
+.cmp tr.on td { font-weight: 700; } .cmp td:first-child { white-space: nowrap; }
 </style>
 
 <header class="top">
@@ -767,16 +804,18 @@ details > summary::-webkit-details-marker { display: none; }
     TN: [D, F, M, C, N, H, S], VT: [D, F, N], VA: [D, F, M, C, N, R, H, B, S], WV: [D, F, M, C, N, R, S], WY: [D, F, M, C, N] };
   var STATE_NAMES = { AZ: 'Arizona', CO: 'Colorado', CT: 'Connecticut', DC: 'Washington, DC', DE: 'Delaware', FL: 'Florida', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MO: 'Missouri', NH: 'New Hampshire', NJ: 'New Jersey', NY: 'New York', NC: 'North Carolina', NV: 'Nevada', OH: 'Ohio', OR: 'Oregon', PA: 'Pennsylvania', TN: 'Tennessee', VT: 'Vermont', VA: 'Virginia', WV: 'West Virginia', WY: 'Wyoming' };
 
-  var DEF = { minEdge: 0.02, minConf: 50, modelTrust: 0.15 };
+  var DEF = { minEdge: 0.02, minConf: 50, modelTrust: 0.15, stake: 1, sizing: 'conf' };
   var MARKETS = [{ key: 'h2h', name: 'Moneyline' }, { key: 'spreads', name: 'Spread' }, { key: 'totals', name: 'Total' }];
   var MK_NAME = { h2h: 'moneyline', spreads: 'spread', totals: 'total', outrights: 'winner' };
-  var state = { tab: 'board', sport: 'all', market: 'h2h', books: null, usState: '', minEdge: DEF.minEdge, minConf: DEF.minConf, modelTrust: DEF.modelTrust, ddOpen: false };
+  var state = { tab: 'board', sport: 'all', market: 'h2h', books: null, usState: '', minEdge: DEF.minEdge, minConf: DEF.minConf, modelTrust: DEF.modelTrust, stake: DEF.stake, sizing: DEF.sizing, ddOpen: false };
   try {
     var saved = JSON.parse(localStorage.getItem('fairline:v2') || 'null');
-    if (saved) ['sport', 'market', 'books', 'usState', 'minEdge', 'minConf', 'modelTrust'].forEach(function (k) { if (saved[k] != null) state[k] = saved[k]; });
+    if (saved) ['sport', 'market', 'books', 'usState', 'minEdge', 'minConf', 'modelTrust', 'sizing'].forEach(function (k) { if (saved[k] != null) state[k] = saved[k]; });
+    if (saved && saved.sv === 2 && saved.stake > 0) state.stake = saved.stake;   // stakes saved before the $1 default are not carried over
+    if (['flat', 'conf', 'kelly'].indexOf(state.sizing) < 0) state.sizing = DEF.sizing;
   } catch (e) {}
   function save() {
-    try { localStorage.setItem('fairline:v2', JSON.stringify({ sport: state.sport, market: state.market, books: state.books, usState: state.usState, minEdge: state.minEdge, minConf: state.minConf, modelTrust: state.modelTrust })); } catch (e) {}
+    try { localStorage.setItem('fairline:v2', JSON.stringify({ sport: state.sport, market: state.market, books: state.books, usState: state.usState, minEdge: state.minEdge, minConf: state.minConf, modelTrust: state.modelTrust, stake: state.stake, sizing: state.sizing, sv: 2 })); } catch (e) {}
   }
   var hash = (location.hash || '').replace('#', '');
   if (['board', 'value', 'record', 'data'].indexOf(hash) >= 0) state.tab = hash;
@@ -1037,7 +1076,7 @@ details > summary::-webkit-details-marker { display: none; }
       : esc(outLabel(ev, r.market, r.outcome, o.point)) + ' <span class="num">(' + FL.fmtAm(o.price) + ')</span>';
     var kind = r.market === 'h2h' ? 'To win' : r.market === 'spreads' ? 'Point spread' : r.market === 'totals' ? 'Total' : 'To win it all';
     var h = '<article class="rec' + (low ? ' low' : '') + '"><div class="r-meta"><b>' + esc(ev.sport_title) + '</b><span>' + esc(when(ev)) + '</span><span>' + (ev.outright ? esc(ev.title || '') : esc(nm(ev, 'away')) + ' at ' + esc(nm(ev, 'home'))) + '</span></div>';
-    h += '<div class="r-pick"><div><h3>' + pick + '</h3><p>' + kind + ' at <b>' + esc(meta(o.book, o.title).name) + '</b></p></div><div class="r-edge">' + edgeTxt(o.ev) + '<small>edge</small></div></div>';
+    h += '<div class="r-pick"><div><h3>' + pick + '</h3><p>' + kind + ' at <b>' + esc(meta(o.book, o.title).name) + '</b> · paper stake <span class="num">' + money(stakeFor({ conf: c.score, ev: o.ev, dec: o.dec })) + '</span></p></div><div class="r-edge">' + edgeTxt(o.ev) + '<small>edge</small></div></div>';
     h += '<div class="meter"><span>Confidence</span><div class="bar' + bar + '"><i style="width:' + c.score + '%"></i></div><span><span class="num">' + c.score + '</span> · ' + lab + '</span></div>';
     h += '<dl class="nums"><div><dt>App odds</dt><dd>' + pct(o.pApp) + ' <small>fair ' + FL.fmtAm(FL.probToAm(o.pApp)) + '</small></dd></div>' +
       '<div><dt>Price needs</dt><dd>' + pct(o.implied) + ' <small>to break even</small></dd></div>' +
@@ -1099,41 +1138,185 @@ details > summary::-webkit-details-marker { display: none; }
   }
 
   // ---------- record ----------
+  // Every logged pick is a paper bet. The stake is worked out here, on the phone, from the pick's
+  // price and the confidence it had when it was logged, so changing the stake re-prices the history.
+  var STAKES = [1, 2, 5, 10, 20, 25, 50, 100], CH = null;
+  var SIZING = { flat: 'Same stake', conf: 'By confidence', kelly: 'Kelly method' };
+  var MODES = ['flat', 'conf', 'kelly'], SER = { flat: 's1', conf: 's2', kelly: 's3' };
+  var KELLY_REF = 0.03, KELLY_CAP = 5;   // a 3% edge at even money stakes the base; no bet stakes more than 5 bases
+  function cents(x) { return Math.round(x * 100) / 100; }
+  function money(x, signed) {
+    var s = '$' + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (x < -0.004 ? '−' : signed && x > 0.004 ? '+' : '') + s;
+  }
+  // b: { conf, ev, dec } = confidence score, edge per $1 at the app's odds, and decimal price when the bet was logged
+  function stakeFor(b, mode) {
+    mode = mode || state.sizing;
+    if (mode === 'conf') return cents(state.stake * Math.max(0, Math.min(100, Number(b.conf) || 0)) / 100);
+    if (mode === 'kelly') {
+      // Kelly: the share of a bankroll to stake is edge / (payout per $1). Scaled so the reference bet stakes the base.
+      var pay = b.dec - 1, k = pay > 0 && b.ev > 0 ? b.ev / pay / KELLY_REF : 0;
+      return cents(state.stake * Math.min(KELLY_CAP, k));
+    }
+    return state.stake;
+  }
+  function betOf(p) { return { conf: p.conf, ev: p.ev, dec: FL.amToDec(p.price) }; }
+  function profitOf(p, st) { return p.status === 'won' ? cents(st * (FL.amToDec(p.price) - 1)) : p.status === 'lost' ? -st : 0; }
+  function tally(P, mode) {
+    var mk = function () { return { graded: 0, w: 0, l: 0, p: 0, staked: 0, profit: 0, roi: 0, clv_n: 0, clv: 0 }; };
+    var T = { all: mk(), bySport: {}, byConf: { High: mk(), Medium: mk(), Low: mk() }, titles: {}, pending: 0, atStake: 0, cum: [0], rows: [] };
+    var done = [];
+    P.forEach(function (p) {
+      if (p.status === 'pending') { T.pending++; T.atStake += stakeFor(betOf(p), mode); }
+      else if (p.status === 'won' || p.status === 'lost' || p.status === 'push') done.push(p);
+    });
+    done.sort(function (a, b) { return Date.parse(a.commence_time) - Date.parse(b.commence_time) || Date.parse(a.logged_at) - Date.parse(b.logged_at) || (a.id < b.id ? -1 : 1); });
+    done.forEach(function (p) {
+      var st = stakeFor(betOf(p), mode), pr = profitOf(p, st);
+      T.titles[p.sport_key] = p.sport_title;
+      [T.all, T.bySport[p.sport_key] = T.bySport[p.sport_key] || mk(), T.byConf[FL.confLabel(p.conf)]].forEach(function (b) {
+        b.graded++; b[p.status === 'won' ? 'w' : p.status === 'lost' ? 'l' : 'p']++; b.staked += st; b.profit += pr;
+        if (p.clv != null) { b.clv_n++; b.clv += p.clv; }
+      });
+      T.cum.push(cents(T.all.profit)); T.rows.push(p);
+    });
+    var fin = function (b) { b.staked = cents(b.staked); b.profit = cents(b.profit); b.roi = b.staked ? b.profit / b.staked : 0; b.clv = b.clv_n ? b.clv / b.clv_n : null; };
+    fin(T.all); Object.keys(T.bySport).forEach(function (k) { fin(T.bySport[k]); }); Object.keys(T.byConf).forEach(function (k) { fin(T.byConf[k]); });
+    T.atStake = cents(T.atStake);
+    return T;
+  }
+  function niceTicks(lo, hi) {
+    var raw = ((hi - lo) || 1) / 3, mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), f = raw / mag;
+    var step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag, t = [];
+    for (var v = Math.floor(lo / step + 1e-9) * step; v < hi + step - step * 1e-6; v += step) t.push(Math.round(v * 100) / 100);
+    if (t.length < 2) t.push(Math.round((t[0] + step) * 100) / 100);
+    return t;
+  }
+  function tickTxt(v, step) {
+    var s = '$' + (step < 1 ? Math.abs(v).toFixed(2) : Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 }));
+    return (v < 0 ? '−' : v > 0 ? '+' : '') + s;
+  }
+  function stakeHtml() {
+    var ex = function (am, ev) { return money(stakeFor({ conf: 0, ev: ev, dec: FL.amToDec(am) }, 'kelly')); };
+    var h = '<div class="stake"><div class="stake-row"><label for="stakeSel">Base stake<select id="stakeSel">';
+    (STAKES.indexOf(state.stake) < 0 ? STAKES.concat([state.stake]).sort(function (a, b) { return a - b; }) : STAKES).forEach(function (s) { h += '<option value="' + s + '"' + (s === state.stake ? ' selected' : '') + '>$' + s + '</option>'; });
+    h += '</select></label><label for="sizingSel">Sizing<select id="sizingSel">';
+    MODES.forEach(function (k) { h += '<option value="' + k + '"' + (state.sizing === k ? ' selected' : '') + '>' + SIZING[k] + '</option>'; });
+    h += '</select></label></div><p>' + (state.sizing === 'conf'
+      ? 'Each paper bet stakes the base times its confidence score. A 60 stakes <span class="num">' + money(stakeFor({ conf: 60 }, 'conf')) + '</span>; an 85 stakes <span class="num">' + money(stakeFor({ conf: 85 }, 'conf')) + '</span>.'
+      : state.sizing === 'kelly'
+      ? 'Each paper bet stakes more for a bigger edge and less for longer odds. A 3% edge stakes <span class="num">' + ex(100, 0.03) + '</span> at +100, <span class="num">' + ex(300, 0.03) + '</span> at +300 and <span class="num">' + ex(-200, 0.03) + '</span> at −200. No bet stakes more than <span class="num">' + money(state.stake * KELLY_CAP) + '</span>.'
+      : 'Every paper bet stakes <span class="num">' + money(state.stake) + '</span>, whatever its edge or confidence score.') + '</p></div>';
+    return h;
+  }
+  function chartHtml(TT) {
+    var n = TT.flat.cum.length - 1, all = [];
+    MODES.forEach(function (k) { all = all.concat(TT[k].cum); });
+    var ticks = niceTicks(Math.min.apply(null, all), Math.max.apply(null, all)), lo = ticks[0], hi = ticks[ticks.length - 1], step = ticks[1] - ticks[0];
+    var y = function (v) { return ((hi - v) / (hi - lo) * 100).toFixed(2); };
+    var line = function (cum) { return cum.map(function (v, i) { return (i / n * 100).toFixed(2) + ',' + y(v); }).join(' '); };
+    CH = { n: n, cum: { flat: TT.flat.cum, conf: TT.conf.cum, kelly: TT.kelly.cum }, rows: TT.flat.rows };
+    var order = MODES.filter(function (k) { return k !== state.sizing; }).concat([state.sizing]);   // the sizing in use is drawn on top
+    var h = '<figure class="chart"><div class="plot" id="balPlot" tabindex="0" role="img" aria-label="Running profit after ' + n + ' graded paper bets. ' + MODES.map(function (k) { return SIZING[k] + ': ' + money(TT[k].all.profit, true); }).join('. ') + '. Use the left and right arrow keys to step through the bets.">';
+    h += '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">';
+    ticks.forEach(function (t) { h += '<line class="' + (t === 0 ? 'zero' : 'grid') + '" x1="0" x2="100" y1="' + y(t) + '" y2="' + y(t) + '"/>'; });
+    order.forEach(function (k) { h += '<polyline class="' + SER[k] + '" points="' + line(TT[k].cum) + '"/>'; });
+    h += '</svg>';
+    ticks.forEach(function (t) { h += '<span class="yl" style="top:' + y(t) + '%">' + tickTxt(t, step) + '</span>'; });
+    order.forEach(function (k) { h += '<i class="end ' + SER[k] + '" style="top:' + y(TT[k].cum[n]) + '%"></i>'; });
+    h += '<i class="cross" id="balCross" hidden></i><div class="tip" id="balTip" hidden></div></div>';
+    h += '<div class="xl"><span>Start</span><span>After ' + n + (n === 1 ? ' bet' : ' bets') + '</span></div></figure>';
+    return h;
+  }
+  function wireChart() {
+    var plot = $('balPlot'), cross = $('balCross'), tip = $('balTip'), cur = -1;
+    if (!plot || !CH || !CH.n) return;
+    function row(cls, val, name) {
+      var r = document.createElement('div'), k = document.createElement('i'), b = document.createElement('b'), sp = document.createElement('span');
+      r.className = 'tip-r'; k.className = 'key ' + cls; b.textContent = money(val, true); sp.textContent = name;
+      r.appendChild(k); r.appendChild(b); r.appendChild(sp); return r;
+    }
+    function show(i) {
+      i = Math.max(0, Math.min(CH.n, i)); cur = i;
+      var xp = i / CH.n * 100, p = i ? CH.rows[i - 1] : null, head = document.createElement('div');
+      head.className = 'tip-h';
+      head.textContent = p ? 'Bet ' + i + ' · ' + p.label + ' · ' + (p.status === 'won' ? 'won' : p.status === 'lost' ? 'lost' : 'push') : 'Start';
+      tip.textContent = ''; tip.appendChild(head);
+      MODES.forEach(function (k) { tip.appendChild(row(SER[k], CH.cum[k][i], SIZING[k])); });
+      cross.style.left = xp + '%'; cross.hidden = false;
+      if (xp > 50) { tip.style.left = 'auto'; tip.style.right = 'calc(' + (100 - xp) + '% + 8px)'; } else { tip.style.right = 'auto'; tip.style.left = 'calc(' + xp + '% + 8px)'; }
+      tip.hidden = false;
+    }
+    function hide() { cross.hidden = true; tip.hidden = true; cur = -1; }
+    function at(e) { var r = plot.getBoundingClientRect(); if (r.width) show(Math.round((e.clientX - r.left) / r.width * CH.n)); }
+    plot.addEventListener('pointermove', at);
+    plot.addEventListener('pointerdown', at);
+    plot.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse' && document.activeElement !== plot) hide(); });
+    plot.addEventListener('focus', function () { if (cur < 0) show(CH.n); });
+    plot.addEventListener('blur', hide);
+    plot.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); show((cur < 0 ? CH.n : cur) + (e.key === 'ArrowLeft' ? -1 : 1)); }
+      else if (e.key === 'Escape') hide();
+    });
+  }
   function recordHtml() {
-    var P = (PICKS && PICKS.picks) || [], S = (PICKS && PICKS.summary) || { all: { graded: 0, w: 0, l: 0, p: 0, units: 0, roi: 0, clv: null }, bySport: {}, byConf: {}, titles: {}, pending: 0 };
-    var A = S.all, u = function (x) { return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(2); };
-    var h = '<dl class="tiles four"><div class="tile"><dt>Graded</dt><dd>' + A.graded + '</dd></div><div class="tile"><dt>Won–lost–push</dt><dd>' + A.w + '–' + A.l + '–' + A.p + '</dd></div><div class="tile"><dt>Units</dt><dd>' + u(A.units) + '</dd></div><div class="tile"><dt>Beat the close by</dt><dd>' + (A.clv == null ? '–' : edgeTxt(A.clv)) + '</dd></div></dl>';
+    var P = (PICKS && PICKS.picks) || [];
+    var TT = { flat: tally(P, 'flat'), conf: tally(P, 'conf'), kelly: tally(P, 'kelly') }, T = TT[state.sizing], A = T.all;
+    var minE = (((DATA.pick && DATA.pick.minEdge) || 0.02) * 100).toFixed(0), minC = (DATA.pick && DATA.pick.minConf) || 50;
+    CH = null;
+    var h = stakeHtml();
+    h += '<dl class="tiles four"><div class="tile"><dt>Profit</dt><dd class="' + (A.profit > 0.004 ? 'up' : A.profit < -0.004 ? 'down' : '') + '">' + money(A.profit, true) + '</dd></div>' +
+      '<div class="tile"><dt>Return</dt><dd>' + (A.graded ? edgeTxt(A.roi) : '–') + '</dd></div>' +
+      '<div class="tile"><dt>Won–lost–push</dt><dd>' + A.w + '–' + A.l + '–' + A.p + '</dd></div>' +
+      '<div class="tile"><dt>Beat the close by</dt><dd>' + (A.clv == null ? '–' : edgeTxt(A.clv)) + '</dd></div></dl>';
+    var wait = T.pending ? T.pending + (T.pending === 1 ? ' bet is' : ' bets are') + ' waiting for ' + (T.pending === 1 ? 'its game' : 'their games') + ' to finish, with <b>' + money(T.atStake) + '</b> staked on ' + (T.pending === 1 ? 'it' : 'them') + '.' : '';
     h += '<div class="doc"><div>';
-    if (!A.graded) h += '<h2>Nothing has been graded yet</h2><p>The app logs a 1-unit paper bet each time a price at your default books clears the default bar (edge ≥ ' + (((DATA.pick && DATA.pick.minEdge) || 0.02) * 100).toFixed(0) + '%, confidence ≥ ' + ((DATA.pick && DATA.pick.minConf) || 50) + '). ' + (S.pending ? S.pending + ' are waiting for their games to finish.' : 'None has been logged so far.') + '</p>';
-    else h += '<h2>How the picks have done</h2><p>' + A.graded + ' paper bets of 1 unit each, logged automatically when a price cleared the default bar. Return per bet: <b>' + edgeTxt(A.roi) + '</b>.' + (A.graded < 200 ? ' That is too few to tell skill from luck; a few hundred are needed.' : '') + '</p>';
+    if (!A.graded) h += '<h2>Nothing has been graded yet</h2><p>The app logs a paper bet each time a price at your default books clears the default bar (edge ≥ ' + minE + '%, confidence ≥ ' + minC + '). ' + (wait || 'None has been logged so far.') + '</p>';
+    else h += '<h2>How the picks have done</h2><p>' + A.graded + ' paper ' + (A.graded === 1 ? 'bet' : 'bets') + ', <b>' + money(A.staked) + '</b> staked in total, <b>' + money(A.profit, true) + '</b> profit. That is ' + edgeTxt(A.roi) + ' on the money staked.' +
+      (A.graded < 200 ? ' That is too few bets to tell skill from luck; a few hundred are needed.' : '') + (wait ? ' ' + wait : '') + '</p>';
     h += '</div></div>';
+    if (A.graded) {
+      h += '<h2 class="sec-h">Running profit<small>' + A.graded + (A.graded === 1 ? ' bet' : ' bets') + ', sized three ways</small></h2><div class="chartcard">' + chartHtml(TT);
+      h += '<table class="plain cmp"><thead><tr><th>Sizing</th><th class="r">Staked</th><th class="r">Profit</th><th class="r">Return</th></tr></thead><tbody>';
+      MODES.forEach(function (k) {
+        h += '<tr' + (state.sizing === k ? ' class="on"' : '') + '><td><i class="key ' + SER[k] + '"></i>' + SIZING[k] + '</td><td class="r num">' + money(TT[k].all.staked) + '</td><td class="r num">' + money(TT[k].all.profit, true) + '</td><td class="r num">' + edgeTxt(TT[k].all.roi) + '</td></tr>';
+      });
+      var rank = MODES.slice().sort(function (a, b) { return TT[b].all.roi - TT[a].all.roi; });
+      h += '</tbody></table><p class="cmp-note">' + (A.graded < 30 ? 'Too few bets to compare the three yet.'
+        : 'Best return per dollar staked so far: <b>' + SIZING[rank[0]] + '</b>, then ' + SIZING[rank[1]] + ', then ' + SIZING[rank[2]] + '.' + (A.graded < 200 ? ' With this few bets, that order can still be luck.' : '')) + '</p></div>';
+    }
     function table(title, rows) {
       if (!rows.length) return '';
-      var t = '<div class="scroll"><table class="plain"><thead><tr><th>' + title + '</th><th class="r">Bets</th><th class="r">W–L–P</th><th class="r">Units</th><th class="r">Per bet</th><th class="r">Vs close</th></tr></thead><tbody>';
-      rows.forEach(function (r) { t += '<tr><td><b>' + esc(r[0]) + '</b></td><td class="r num">' + r[1].graded + '</td><td class="r num">' + r[1].w + '–' + r[1].l + '–' + r[1].p + '</td><td class="r num">' + u(r[1].units) + '</td><td class="r num">' + edgeTxt(r[1].roi) + '</td><td class="r num">' + (r[1].clv == null ? '–' : edgeTxt(r[1].clv)) + '</td></tr>'; });
+      var t = '<div class="scroll"><table class="plain"><thead><tr><th>' + title + '</th><th class="r">W–L–P</th><th class="r">Profit</th><th class="r">Return</th><th class="r">Vs close</th></tr></thead><tbody>';
+      rows.forEach(function (r) { t += '<tr><td><b>' + esc(r[0]) + '</b></td><td class="r num">' + r[1].w + '–' + r[1].l + '–' + r[1].p + '</td><td class="r num">' + money(r[1].profit, true) + '</td><td class="r num">' + edgeTxt(r[1].roi) + '</td><td class="r num">' + (r[1].clv == null ? '–' : edgeTxt(r[1].clv)) + '</td></tr>'; });
       return t + '</tbody></table></div>';
     }
     if (A.graded) {
-      h += table('Sport', Object.keys(S.bySport).map(function (k) { return [S.titles[k] || k, S.bySport[k]]; }).sort(function (a, b) { return b[1].graded - a[1].graded; }));
-      h += table('Confidence', ['High', 'Medium', 'Low'].filter(function (k) { return S.byConf[k] && S.byConf[k].graded; }).map(function (k) { return [k, S.byConf[k]]; }));
+      h += table('Sport', Object.keys(T.bySport).map(function (k) { return [T.titles[k] || k, T.bySport[k]]; }).sort(function (a, b) { return b[1].graded - a[1].graded; }));
+      h += table('Confidence', ['High', 'Medium', 'Low'].filter(function (k) { return T.byConf[k].graded; }).map(function (k) { return [k, T.byConf[k]]; }));
     }
     if (P.length) {
       var recent = P.slice().sort(function (a, b) { return Date.parse(b.commence_time) - Date.parse(a.commence_time); }).slice(0, 80);
-      h += '<h2 class="sec-h">Picks<small>latest ' + recent.length + ' of ' + P.length + '</small></h2><div class="scroll"><table class="plain"><thead><tr><th>Pick</th><th>Game</th><th class="r">Price</th><th class="r">Result</th></tr></thead><tbody>';
+      h += '<h2 class="sec-h">Picks<small>latest ' + recent.length + ' of ' + P.length + '</small></h2><table class="plain picks"><thead><tr><th>Pick</th><th>Game</th><th class="r">Result</th></tr></thead><tbody>';
       recent.forEach(function (p) {
+        var st = stakeFor(betOf(p)), pr = profitOf(p, st);
         var cls = p.status === 'won' ? 'good' : p.status === 'lost' ? 'bad' : 'mute';
-        var res = p.status === 'pending' ? 'Pending' : p.status === 'won' ? 'Won ' + u(p.units) : p.status === 'lost' ? 'Lost' : p.status === 'push' ? 'Push' : 'No result';
-        h += '<tr><td><b>' + esc(p.label) + '</b><br><span class="muted small">' + esc(p.book_title || p.book) + '</span></td><td>' + esc(p.away) + ' at ' + esc(p.home) + '<br><span class="muted small">' + esc(p.sport_title) + ' \u00b7 ' + esc(fmtDate.format(Date.parse(p.commence_time))) + (p.score ? ' \u00b7 ' + esc(p.score) : '') + '</span></td>' +
-          '<td class="r"><span class="num">' + FL.fmtAm(p.price) + '</span><br><span class="muted small">edge ' + edgeTxt(p.ev) + '</span></td>' +
-          '<td class="r"><span class="pill ' + cls + '">' + res + '</span><br><span class="muted small">' + (p.clv == null ? 'conf ' + p.conf : 'vs close ' + edgeTxt(p.clv)) + '</span></td></tr>';
+        var res = p.status === 'pending' ? 'Pending' : p.status === 'won' ? 'Won ' + money(pr, true) : p.status === 'lost' ? 'Lost ' + money(pr, true) : p.status === 'push' ? 'Push ' + money(0) : 'No result';
+        h += '<tr><td><b>' + esc(p.label) + '</b> <span class="num">' + FL.fmtAm(p.price) + '</span><br><span class="muted small">' + esc(p.book_title || p.book) + '<br>edge ' + edgeTxt(p.ev) + '</span></td>' +
+          '<td>' + esc(p.away) + ' at ' + esc(p.home) + '<br><span class="muted small">' + esc(p.sport_title) + ' · ' + esc(fmtDate.format(Date.parse(p.commence_time))) + (p.score ? '<br>' + esc(p.score) : '') + '</span></td>' +
+          '<td class="r"><span class="pill ' + cls + '">' + res + '</span><br><span class="muted small">' + (p.status === 'void' ? 'stake returned' : '<span class="num">' + money(st) + '</span> · conf ' + p.conf) + (p.clv == null ? '' : '<br>' + (p.status === 'pending' ? 'line so far ' : 'vs close ') + edgeTxt(p.clv)) + '</span></td></tr>';
       });
-      h += '</tbody></table></div>';
+      h += '</tbody></table>';
     }
     h += '<div class="doc"><div><h2>How to read this page</h2><ul>' +
-      '<li><b>Units</b> is profit in bet sizes. A winning +150 bet earns 1.5 units; a losing bet costs 1.</li>' +
+      '<li><b>Profit</b> is what the paper bets would have made in dollars. On a ' + money(state.stake) + ' stake, a winning +150 bet earns ' + money(state.stake * 1.5) + ', a losing bet costs the ' + money(state.stake) + ', and a push returns the stake.</li>' +
+      '<li><b>Return</b> is profit divided by the money staked. Use it to compare the three ways of sizing, because they stake different totals.</li>' +
+      '<li><b>By confidence</b> stakes the base times the confidence score the bet had when it was logged, so bets the app trusts more carry more money. It only pays off if higher-confidence bets really do better, which the Confidence table shows over time.</li>' +
+      '<li><b>Kelly method</b> stakes in proportion to the edge divided by the payout, so a bigger edge stakes more and a long shot stakes less. It is scaled so a 3% edge at +100 stakes the base, and capped at five times the base. It trusts the app’s edge estimate fully, so it is only as good as that estimate.</li>' +
       '<li><b>Beat the close by</b> compares the price the app took with the fair line the last time it was seen before the game. Positive means the market moved toward the pick. It is the fastest fair test of a betting method, and it shows up long before profit does.</li>' +
       '<li><b>A few picks prove nothing.</b> With edges of 2 to 4%, it takes several hundred graded bets before profit can be told apart from luck.</li>' +
-      '<li><b>Only game bets in sports with a results feed are tracked:</b> the major US leagues, the big soccer leagues and UFC. Golf, tennis and boxing bets appear under Value bets but are not logged here.</li></ul></div></div>';
+      '<li><b>Only game bets in sports with a results feed are tracked:</b> the major US leagues, the big soccer leagues and UFC. Golf, tennis and boxing bets appear under Value bets but are not logged here.</li>' +
+      '<li><b>These are paper bets.</b> The app never places a bet, and a paper stake is not advice on how much to bet.</li></ul></div></div>';
     return h;
   }
 
@@ -1190,6 +1373,7 @@ details > summary::-webkit-details-marker { display: none; }
     var open = {}; out.querySelectorAll('details[data-k]').forEach(function (d) { if (d.open) open[d.dataset.k] = 1; });
     out.innerHTML = bodyHtml(now);
     out.querySelectorAll('details[data-k]').forEach(function (d) { if (open[d.dataset.k]) d.open = true; });
+    wireChart();
     var c = $('booksCt'); if (c) c.textContent = state.books.length + ' of ' + BOOKS.length;
     var b = $('barSum'); if (b) b.textContent = barSum();
     var n = $('noticeAge'); if (n) n.textContent = FL.fmtAge(ageMin());
@@ -1209,6 +1393,7 @@ details > summary::-webkit-details-marker { display: none; }
     else if (state.tab === 'value') head = noticeHtml() + filtersHtml(false, now) + settingsHtml();
     main.innerHTML = head + '<div class="out" id="out">' + bodyHtml(now) + '</div>';
     if (keepSettings && $('settings')) $('settings').open = true;
+    wireChart();
   }
   function go(tab) {
     state.tab = tab; state.ddOpen = false;
@@ -1235,6 +1420,8 @@ details > summary::-webkit-details-marker { display: none; }
     }
   });
   main.addEventListener('change', function (e) {
+    if (e.target.id === 'stakeSel') { var sv = Number(e.target.value); if (sv > 0) state.stake = sv; save(); drawOut(); var ss = $('stakeSel'); if (ss) ss.focus(); return; }
+    if (e.target.id === 'sizingSel') { if (SIZING[e.target.value]) state.sizing = e.target.value; save(); drawOut(); var sz = $('sizingSel'); if (sz) sz.focus(); return; }
     if (e.target.id === 'stateSel') {
       state.usState = e.target.value;
       if (STATES[state.usState]) {
@@ -1277,7 +1464,7 @@ details > summary::-webkit-details-marker { display: none; }
     }).catch(function (e) { if (!DATA) { loadErr = String(e && e.message || e); draw(); } });
   }
   draw(); load(true);
-  setInterval(function () { if (DATA) drawOut(); }, 60000);
+  setInterval(function () { if (!DATA) return; if (state.tab === 'record') chrome(Date.now()); else drawOut(); }, 60000);
   setInterval(function () { if (!document.hidden) load(false); }, 10 * 60000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && DATA && ageMin() > 30) load(false); });
 })();
