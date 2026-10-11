@@ -1,4 +1,4 @@
-// Fair Line updater. Runs on GitHub's servers every two hours (see the workflow file).
+// Fair Line updater. Runs on GitHub's servers about every 15 minutes (see the workflow file).
 // It pulls odds, results, injuries, weather and starters, rates the teams, logs and grades picks,
 // and writes the files the app reads into the data folder. No installs needed: plain Node 18+.
 import fs from 'node:fs';
@@ -428,6 +428,7 @@ const FL = (() => { const module = { exports: {} }; (function (module) {
     var recs = [];
     analyses.forEach(function (an) {
       var ev = an.event;
+      if (ev.excluded) return;                                   // preseason, exhibition or not on the league's schedule
       if (Date.parse(ev.commence_time) <= opts.now) return;      // pregame only: once it starts, saved prices are closed
       MARKETS.forEach(function (mk) {
         var m = an.markets[mk]; if (!m) return;
@@ -459,6 +460,7 @@ const FL = (() => { const module = { exports: {} }; (function (module) {
     }
     analyses.forEach(function (an) {
       var ev = an.event;
+      if (ev.excluded) return;
       if (Date.parse(ev.commence_time) <= opts.now) return;
       var h = an.markets.h2h;
       if (h) {
@@ -605,11 +607,21 @@ function shape(x) { return Array.isArray(x) ? 'array(' + x.length + ')' : x && t
 // ---------- matching team names across sources ----------
 const STOP = new Set(['fc', 'cf', 'afc', 'sc', 'ac', 'as', 'cd', 'ud', 'rc', 'rcd', 'sv', 'vfb', 'vfl', 'tsg', 'fsv', 'ss', 'ssc', 'us', 'club', 'de', 'the', 'and', 'of']);
 const ALIAS = [[/\bla\b/g, 'los angeles'], [/\bny\b/g, 'new york'], [/\bsaint\b/g, 'st'], [/\binternazionale\b/g, 'inter milan'], [/\bathletic club\b/g, 'athletic bilbao'],
-  [/\blafc\b/g, 'los angeles'], [/\bman\b/g, 'manchester'], [/\butd\b/g, 'united'], [/\bwolves\b/g, 'wolverhampton wanderers'], [/\bspurs\b/g, 'tottenham hotspur'], [/\bpsg\b/g, 'paris st germain']];
+  [/\blafc\b/g, 'los angeles'], [/\bman\b/g, 'manchester'], [/\butd\b/g, 'united'], [/\bwolves\b/g, 'wolverhampton wanderers'], [/\bspurs\b/g, 'tottenham hotspur'], [/\bpsg\b/g, 'paris st germain'],
+  // the same club under its local and its English name
+  [/\b(koeln|koln)\b/g, 'cologne'], [/\b(muenchen|munchen)\b/g, 'munich'], [/\bmoenchengladbach\b/g, 'monchengladbach'], [/\bnuernberg\b/g, 'nurnberg'], [/\bduesseldorf\b/g, 'dusseldorf'], [/\bfuerth\b/g, 'furth'],
+  [/\bhamburger\b/g, 'hamburg'], [/\bpraha\b/g, 'prague'], [/\bsporting (lisbon|lisboa|clube de portugal)\b/g, 'sporting cp'], [/\bstade rennais\b/g, 'rennes'], [/\bstade brestois\b/g, 'brest'], [/\bstade de reims\b/g, 'reims'],
+  [/\bolympique (de )?(lyonnais|lyon)\b/g, 'lyon'], [/\bolympique (de )?marseille\b/g, 'marseille'],
+  // colleges that feeds spell out and ESPN abbreviates
+  [/\bmiami (florida|fl)\b/g, 'miami hurricanes'], [/\bmiami (ohio|oh)\b/g, 'miami oh redhawks'], [/\bsouthern california\b/g, 'usc'], [/(?<!southern )\bmississippi\b(?! (state|valley))/g, 'ole miss'],
+  [/\bmassachusetts\b/g, 'umass'], [/\bconnecticut\b/g, 'uconn'], [/\bcentral florida\b/g, 'ucf'], [/\btexas san antonio\b/g, 'utsa'], [/\bbrigham young\b/g, 'byu'], [/\bsouthern methodist\b/g, 'smu'],
+  [/\btexas christian\b/g, 'tcu'], [/\blouisiana state\b/g, 'lsu'], [/\bnevada las vegas\b/g, 'unlv'], [/\bappalachian state\b/g, 'app state'], [/\btexas el paso\b/g, 'utep'], [/\balabama birmingham\b/g, 'uab'],
+  [/\bflorida international\b/g, 'fiu'], [/\bnorth carolina state\b/g, 'nc state']];
+const FOLD = { 'ø': 'o', 'æ': 'ae', 'ß': 'ss', 'đ': 'd', 'ł': 'l', 'ı': 'i', 'œ': 'oe', 'þ': 'th', 'ð': 'd' };      // letters that do not split into a base letter and an accent
 const normCache = new Map();
 function norm(name) {
   if (normCache.has(name)) return normCache.get(name);
-  let s = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&/g, ' and ').replace(/['’.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  let s = String(name || '').toLowerCase().replace(/[øæßđłıœþð]/g, (c) => FOLD[c]).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&/g, ' and ').replace(/['’.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   for (const [re, to] of ALIAS) s = s.replace(re, to);
   const toks = s.split(' ').filter((t) => t && !STOP.has(t) && !/^\d+$/.test(t));
   const out = { s: toks.join(' '), t: new Set(toks) };
@@ -624,9 +636,19 @@ function nameScore(a, b) {
   if (inter && inter === Math.min(A.t.size, C.t.size)) return 0.9;
   return (2 * inter) / (A.t.size + C.t.size);
 }
-function pairScore(h1, a1, h2, a2) {
-  const straight = Math.min(nameScore(h1, h2), nameScore(a1, a2));
-  const swapped = Math.min(nameScore(h1, a2), nameScore(a1, h2));
+// Fighters: "Timmy Cuamba" and "Timothy Cuamba", "Su Young You" and "SuYoung You" are the same person.
+function personScore(a, b) {
+  const A = norm(a), C = norm(b);
+  if (!A.s || !C.s) return 0;
+  if (A.s.replace(/ /g, '') === C.s.replace(/ /g, '')) return 1;
+  const x = A.s.split(' '), y = C.s.split(' ');
+  if (x[x.length - 1] === y[y.length - 1] && x[0][0] === y[0][0]) return 0.8;
+  return nameScore(a, b);
+}
+function pairScore(h1, a1, h2, a2, people) {
+  const f = people ? personScore : nameScore;
+  const straight = Math.min(f(h1, h2), f(a1, a2));
+  const swapped = Math.min(f(h1, a2), f(a1, h2));
   return swapped > straight ? { score: swapped, swapped: true } : { score: straight, swapped: false };
 }
 const MULTI = ['red sox', 'white sox', 'blue jays', 'maple leafs', 'red wings', 'blue jackets', 'golden knights', 'trail blazers'];
@@ -640,7 +662,7 @@ function shortName(full) {
 // STATE
 // =====================================================================================
 const state = readJSON('state.json', null) || { version: 2, created_at: iso(NOW) };
-for (const k of ['feeds', 'events', 'ratings', 'sched', 'venues', 'depth', 'goalies', 'wx']) state[k] = state[k] || {};
+for (const k of ['feeds', 'events', 'ratings', 'sched', 'venues', 'depth', 'goalies', 'wx', 'inj']) state[k] = state[k] || {};
 {
   // prices and line history are kept once, in the file the app reads
   const prev = readJSON('latest.json', null);
@@ -663,6 +685,7 @@ if (picksFile.reset !== RECORD_RESET || !Array.isArray(picksFile.picks)) {
 const firstRun = !state.last_run;
 const gapDays = state.last_run ? Math.min(6, Math.max(0, (NOW - Date.parse(state.last_run)) / DAY)) : 0;
 
+function isFights(key) { return !!(LEAGUES[key] && LEAGUES[key].kind === 'fights'); }
 function wants(key) { return CONFIG.sports.some((p) => p === key || (p.endsWith('*') && key.startsWith(p.slice(0, -1)))); }
 function rank(key) { const i = CONFIG.sports.findIndex((p) => p === key || (p.endsWith('*') && key.startsWith(p.slice(0, -1)))); return i < 0 ? 99 : i; }
 
@@ -692,7 +715,17 @@ function espnOdds(o) {
   }
   return { key, close: side('close'), open: side('open') };
 }
-function parseEspnEvent(e, fights) {
+// Preseason, spring training, all-star and other exhibition games. ESPN marks the season type on every game.
+function exhibitionOf(e, c, fights, soccer) {
+  if (fights) return null;
+  const sn = e.season || {}, slug = String(sn.slug || '').toLowerCase();
+  if ((sn.type === 1 && !soccer) || /pre-?season|spring-training|exhibition/.test(slug)) return 'Preseason';
+  const ct = c.type || {};
+  const txt = [ct.abbreviation, ct.text, ct.slug, e.name, e.shortName].concat((c.notes || []).map((n) => n && n.headline), (e.notes || []).map((n) => n && n.headline)).filter(Boolean).join(' | ');
+  if (/all[- ]?star|pro bowl|rising stars|celebrity game|futures game|legends game|exhibition|\bfriendl(y|ies)\b|skills (challenge|competition)/i.test(txt)) return 'Exhibition';
+  return null;
+}
+function parseEspnEvent(e, fights, soccer) {
   const out = [];
   const comps = e.competitions || [];
   for (const c of comps) {
@@ -707,7 +740,7 @@ function parseEspnEvent(e, fights) {
       : { id: String(x.team && x.team.id || x.id), name: (x.team && x.team.displayName) || '', short: (x.team && (x.team.shortDisplayName || x.team.name)) || '', abbr: (x.team && x.team.abbreviation) || '', score: num(x.score), winner: x.winner === true };
     const v = c.venue || {}, ad = v.address || {};
     const ev = {
-      id: String(fights ? c.id : e.id), date: c.date || e.date, yr: e.season && e.season.year, stype: e.season && e.season.type,
+      id: String(fights ? c.id : e.id), date: c.date || e.date, yr: e.season && e.season.year, stype: e.season && e.season.type, exh: exhibitionOf(e, c, fights, soccer),
       state: ty.state || 'pre', done: ty.completed === true, sname: ty.name || '',
       neutral: c.neutralSite === true, indoor: v.indoor === true ? true : v.indoor === false ? false : null,
       venue: v.fullName ? { id: String(v.id || hash(v.fullName)), name: v.fullName, city: ad.city || '', st: ad.state || '', country: ad.country || '' } : null,
@@ -725,7 +758,7 @@ async function espnDayFetch(key, lg, day) {
   const d = r.data || {};
   const yr = d.leagues && d.leagues[0] && d.leagues[0].season && d.leagues[0].season.year;
   const evs = [];
-  for (const e of d.events || []) for (const x of parseEspnEvent(e, lg.kind === 'fights')) evs.push(x);
+  for (const e of d.events || []) for (const x of parseEspnEvent(e, lg.kind === 'fights', lg.kind === 'soccer')) evs.push(x);
   return { ok: true, events: evs, seasonYear: yr };
 }
 
@@ -769,7 +802,7 @@ function applyResult(key, g) {
   R.games = (R.games || 0) + 1;
   return true;
 }
-function usable(g) { return g.done && g.home.score != null && g.away.score != null && g.stype !== 1 && !/POSTPONED|CANCEL|FORFEIT|ABANDON/i.test(g.sname); }
+function usable(g) { return g.done && g.home.score != null && g.away.score != null && g.stype !== 1 && !g.exh && !/POSTPONED|CANCEL|FORFEIT|ABANDON/i.test(g.sname); }
 
 // Starting ratings: fit every team at once from two seasons of margins, so a team's rating accounts for
 // who it played. Recent games count more, blowouts are capped, and teams with few games stay near average.
@@ -867,10 +900,11 @@ function keepSched(S, g, fights) {
   if (g.done && g.home.score != null && g.away.score != null) c.f = [g.home.score, g.away.score];
   if (g.done && fights) c.w = g.home.winner ? 'h' : g.away.winner ? 'a' : 'd';
   if (/POSTPONED|CANCEL/i.test(g.sname)) c.x = 1;
+  if (g.exh) c.p = g.exh === 'Preseason' ? 1 : 2;
   S.ev[g.id] = c;
 }
 async function runEspn(activeKeys) {
-  let bootBudget = 330, okLeagues = 0, failLeagues = 0, newResults = 0, lastErr = null;
+  let bootBudget = 330, okLeagues = 0, failLeagues = 0, newResults = 0, lastErr = null, quiet = 0;
   const keys = Object.keys(LEAGUES).filter((k) => wants(k)).sort((a, b) => rank(a) - rank(b));
   for (const key of keys) {
     const lg = LEAGUES[key], fights = lg.kind === 'fights';
@@ -878,9 +912,20 @@ async function runEspn(activeKeys) {
     S.ev = S.ev || {}; S.tm = S.tm || {};
     if (S.idle_until && Date.parse(S.idle_until) > NOW && !(activeKeys && activeKeys.has(key))) continue;
     const back = Math.max(2, Math.ceil(gapDays) + 1);
-    const needExt = !S.ext_at || NOW - Date.parse(S.ext_at) > 6 * HOUR;
-    const days = etDays(-back, needExt ? (lg.college && key.startsWith('basketball') ? 3 : 8) : 1);
+    // Three depths, so the updater can run often without leaning on ESPN: the week ahead every six hours,
+    // the last few days and tomorrow about once an hour, and in between only days with a game near its start or under way.
+    const needExt = S.v !== 2 || !S.ext_at || NOW - Date.parse(S.ext_at) > 6 * HOUR;
+    const needFull = needExt || !S.full_at || NOW - Date.parse(S.full_at) > 50 * 60e3 || gapDays > 0.25;
+    let days;
+    if (needExt) days = etDays(-back, lg.college && key.startsWith('basketball') ? 5 : 8);
+    else if (needFull) days = etDays(-back, 1);
+    else {
+      const live = new Set();
+      for (const c of Object.values(S.ev)) { const h = (Date.parse(c.d) - NOW) / HOUR; if (h > -7 && h < 18 && !c.f && !c.w && !c.x) live.add(etDay(Date.parse(c.d))); }
+      days = [...live];
+    }
     const F = fetched[key] = new Map();
+    if (!days.length) { quiet++; continue; }
     let failed = false, seasonYear = S.season || null;
     for (const d of days) {
       const r = await espnDayFetch(key, lg, d);
@@ -890,7 +935,8 @@ async function runEspn(activeKeys) {
     }
     if (failed) { failLeagues++; continue; }
     okLeagues++;
-    S.season = seasonYear;
+    S.season = seasonYear; S.v = 2;
+    if (needFull) S.full_at = iso(NOW);
     const any = Object.values(S.ev).some((c) => Date.parse(c.d) > NOW - 4 * DAY);
     if (needExt) { S.ext_at = iso(NOW); S.idle_until = any ? null : iso(NOW + 3 * DAY); }
     for (const id of Object.keys(S.ev)) if (Date.parse(S.ev[id].d) < NOW - (back + 1.5) * DAY) delete S.ev[id];
@@ -907,7 +953,7 @@ async function runEspn(activeKeys) {
   }
   const rated = keys.filter((k) => LEAGUES[k].elo && state.ratings[k] && state.ratings[k].boot.done && !state.ratings[k].boot.note).length;
   const building = keys.filter((k) => LEAGUES[k].elo && state.sched[k] && state.sched[k].ext_at && !state.sched[k].idle_until && !(state.ratings[k] && state.ratings[k].boot.done)).map((k) => LEAGUES[k].title);
-  src('ESPN scores and schedule', { ok: okLeagues > 0 && failLeagues === 0 ? true : okLeagues > 0 ? 'partial' : false, items: okLeagues + ' leagues', note: newResults + ' new results', error: failLeagues ? failLeagues + ' leagues failed: ' + lastErr : null });
+  src('ESPN scores and schedule', { ok: okLeagues > 0 && failLeagues === 0 ? true : okLeagues > 0 ? 'partial' : false, items: okLeagues + ' leagues checked' + (quiet ? ', ' + quiet + ' with no game near' : ''), note: newResults + ' new results', error: failLeagues ? failLeagues + ' leagues failed: ' + lastErr : null });
   src('Team ratings', { ok: rated > 0 ? (building.length ? 'partial' : true) : building.length ? 'partial' : null, items: rated + ' leagues rated', note: building.length ? 'still building: ' + building.join(', ') : 'fitted from two seasons of results, then updated game by game', error: null });
 }
 
@@ -927,7 +973,7 @@ function resolveEvent(sportKey, title, home, away, commence, srcName, srcId, ext
     for (const ev of Object.values(state.events)) {
       if (ev.sport_key !== sportKey || ev.outright) continue;
       if (Math.abs(Date.parse(ev.commence_time) - t) > 8 * HOUR) continue;
-      const p = pairScore(ev.home_team, ev.away_team, home, away);
+      const p = pairScore(ev.home_team, ev.away_team, home, away, isFights(sportKey));
       if (p.score >= 0.7 && (!best || p.score > best.p.score)) best = { ev, p };
     }
   } else {
@@ -970,12 +1016,40 @@ function putBook(ev, key, title, lastUpdate, source, markets) {
   ev.books[key] = { title: title || BOOK_TITLES[key] || key, last_update: lastUpdate, src: source, markets };
 }
 
+// Two feeds can spell one game two ways ("1. FC Köln" and "FC Koeln"). Fold the copies into one event.
+function mergeDuplicates() {
+  let merged = 0;
+  const bySport = {};
+  for (const ev of Object.values(state.events)) if (!ev.outright && ev.home_team && ev.away_team) (bySport[ev.sport_key] = bySport[ev.sport_key] || []).push(ev);
+  for (const key of Object.keys(bySport)) {
+    const list = bySport[key].sort((a, b) => (b.espn ? 1 : 0) - (a.espn ? 1 : 0) || Object.keys(b.books || {}).length - Object.keys(a.books || {}).length || (a.id < b.id ? -1 : 1));
+    const gone = new Set();
+    for (let i = 0; i < list.length; i++) {
+      const keep = list[i]; if (gone.has(keep.id)) continue;
+      for (let j = i + 1; j < list.length; j++) {
+        const dup = list[j]; if (gone.has(dup.id)) continue;
+        if (Math.abs(Date.parse(keep.commence_time) - Date.parse(dup.commence_time)) > 3 * HOUR) continue;
+        if (keep.espn && dup.espn && keep.espn.id !== dup.espn.id) continue;
+        if (pairScore(keep.home_team, keep.away_team, dup.home_team, dup.away_team, isFights(key)).score < 0.9) continue;
+        keep.books = keep.books || {}; keep.ids = keep.ids || {};
+        for (const [bk, b] of Object.entries(dup.books || {})) putBook(keep, bk, b.title, b.last_update, b.src, renameOutcomes(keep, b.markets, dup.home_team, dup.away_team));
+        for (const [srcName, k] of Object.entries(dup.ids || {})) { keep.ids[keep.ids[srcName] && keep.ids[srcName] !== k ? srcName + '+' + hash(k) : srcName] = k; idIndex.set(k, keep.id); }
+        if (!keep.espn && dup.espn) { keep.espn = dup.espn; if (dup.exh) keep.exh = dup.exh; if (dup.final) keep.final = dup.final; }
+        if (!keep.open && dup.open) keep.open = dup.open;
+        for (const p of picksFile.picks) if (p.event_id === dup.id) p.event_id = keep.id;
+        delete state.events[dup.id]; gone.add(dup.id); merged++;
+      }
+    }
+  }
+  return merged;
+}
+
 // ESPN's DraftKings line: a free price that refreshes every run. Also links games to results.
 function schedGame(key, id) {
   const F = fetched[key], S = state.sched[key];
   if (F && F.has(id)) return F.get(id);
   const c = S.ev[id], tm = (tid) => Object.assign({ id: tid, name: '', short: '', abbr: '', score: null, winner: false }, S.tm[tid] ? { name: S.tm[tid].n, short: S.tm[tid].sh, abbr: S.tm[tid].ab } : {});
-  const g = { id, date: c.d, state: c.st, done: !!c.f || !!c.w, sname: c.x ? 'STATUS_POSTPONED' : '', neutral: !!c.n, indoor: c.i == null ? null : !!c.i, venue: c.v || null, home: tm(c.h), away: tm(c.a), odds: null };
+  const g = { id, date: c.d, state: c.st, done: !!c.f || !!c.w, sname: c.x ? 'STATUS_POSTPONED' : '', neutral: !!c.n, indoor: c.i == null ? null : !!c.i, venue: c.v || null, home: tm(c.h), away: tm(c.a), odds: null, exh: c.p === 1 ? 'Preseason' : c.p === 2 ? 'Exhibition' : null };
   if (c.f) { g.home.score = c.f[0]; g.away.score = c.f[1]; }
   if (c.w) { g.home.winner = c.w === 'h'; g.away.winner = c.w === 'a'; }
   return g;
@@ -996,7 +1070,7 @@ function espnIntoStore() {
         let hit = null;
         for (const ev of Object.values(state.events)) {
           if (ev.sport_key !== key || ev.outright || Math.abs(Date.parse(ev.commence_time) - t) > 8 * HOUR) continue;
-          if (pairScore(ev.home_team, ev.away_team, g.home.name, g.away.name).score >= 0.7) { hit = ev; break; }
+          if (pairScore(ev.home_team, ev.away_team, g.home.name, g.away.name, lg.kind === 'fights').score >= 0.7) { hit = ev; break; }
         }
         if (!hit) continue;
       }
@@ -1004,6 +1078,7 @@ function espnIntoStore() {
       const H = swapped ? g.away : g.home, A = swapped ? g.home : g.away;
       ev.espn = { id: g.id, home: { id: H.id, short: H.short, abbr: H.abbr }, away: { id: A.id, short: A.short, abbr: A.abbr }, neutral: g.neutral, indoor: g.indoor, venue: g.venue, state: g.state };
       if (swapped) ev.espn.swapped = true;
+      if (g.exh) ev.exh = g.exh; else delete ev.exh;
       if (g.done && g.home.score != null) ev.final = { home: H.score, away: A.score };
       if (lg.kind === 'fights' && g.done) ev.final = { winner: H.winner ? 'home' : A.winner ? 'away' : 'draw' };
       if (/POSTPONED|CANCEL/i.test(g.sname)) ev.void = true;
@@ -1043,6 +1118,7 @@ function marketsFor(key, outright) {
 }
 function plan(feed, monthly, cands) {
   const F = state.feeds[feed] = state.feeds[feed] || { sports: {} };
+  const other = state.feeds[feed === 'oddsapi' ? 'parlay' : 'oddsapi'];
   const remaining = F.remaining == null ? monthly : F.remaining;
   const d = new Date(NOW);
   const monthEnd = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
@@ -1066,6 +1142,9 @@ function plan(feed, monthly, cands) {
     else { score = 3 * age; gap = 2.5; }
     if (last && F.sports[c.key].empty && age < 20) continue;      // nothing listed last time; do not keep asking
     if (age < gap) continue;
+    // take turns with the other feed, so a sport gets a fresh set of prices twice as often instead of two sets at once
+    const oth = other && other.sports && other.sports[c.key];
+    if (last && oth && oth.n > 0 && (NOW - Date.parse(oth.at)) / HOUR < gap / 2) continue;
     scored.push(Object.assign({ score: score / (1 + rank(c.key) * 0.08) }, c));
   }
   scored.sort((a, b) => b.score - a.score);
@@ -1082,11 +1161,15 @@ function noteUsage(F, headers, cost) {
   if (headers && headers.get('x-requests-used') != null && Number.isFinite(used)) F.used = used;
   F.bank = Math.max(0, (F.bank || 0) - (Number.isFinite(last) && headers.get('x-requests-last') != null ? last : cost));
 }
+// Some feeds list side markets as if they were games: "Osasuna (Bookings) at Real Betis (Bookings)".
+const SIDE_MARKET = /\((bookings?|corners?|cards?|offsides?|fouls?|shots?[^)]*|throw[- ]?ins?|goal kicks?|tackles?|saves?|hits?|strikeouts?|aces?|games|sets|specials?|to qualify|to advance)\)\s*$/i;
+function sideMarket(home, away) { return SIDE_MARKET.test(String(home || '')) || SIDE_MARKET.test(String(away || '')); }
 function ingest(feed, sportKey, title, list, keyMap) {
   let n = 0;
   for (const e of list) {
     if (!e || !e.commence_time || !Array.isArray(e.bookmakers)) continue;
     const outright = !e.home_team || !e.away_team;
+    if (!outright && sideMarket(e.home_team, e.away_team)) continue;
     const t = Date.parse(e.commence_time);
     if (t <= NOW || (!outright && t > NOW + 8.5 * DAY)) continue;      // pregame only; started games keep their last pregame prices
     const { ev } = resolveEvent(sportKey, e.sport_title || title, e.home_team, e.away_team, new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z'), feed, String(e.id || ''), outright ? { outright: true, title: e.sport_title || title } : null);
@@ -1106,9 +1189,14 @@ async function runOddsApi() {
   const name = 'The Odds API';
   if (!ODDS_KEY) { src(name, { ok: false, error: 'No key set. Add the ODDS_API_KEY secret in the repository settings.' }); return new Set(); }
   const F0 = state.feeds.oddsapi = state.feeds.oddsapi || { sports: {} };
-  const sp = await getJSON(`${B.odds}/v4/sports/?apiKey=${ODDS_KEY}`);
-  if (!sp.ok || !Array.isArray(sp.data)) { src(name, { ok: false, error: sp.status === 401 ? 'The key was rejected. Check the ODDS_API_KEY secret.' : 'sports list: ' + (sp.error || shape(sp.data)) }); return new Set(); }
-  const active = sp.data.filter((s) => s.active && wants(s.key));
+  // the list of sports in season changes slowly: ask for it every three hours, not on every run
+  if (!F0.list || !F0.list_at || NOW - Date.parse(F0.list_at) > 3 * HOUR) {
+    const sp = await getJSON(`${B.odds}/v4/sports/?apiKey=${ODDS_KEY}`);
+    if (!sp.ok || !Array.isArray(sp.data)) { src(name, { ok: false, error: sp.status === 401 ? 'The key was rejected. Check the ODDS_API_KEY secret.' : 'sports list: ' + (sp.error || shape(sp.data)) }); return new Set(); }
+    F0.list = sp.data.filter((s) => s && s.active).map((s) => ({ key: s.key, title: s.title, group: s.group, has_outrights: !!s.has_outrights, active: true }));
+    F0.list_at = iso(NOW);
+  }
+  const active = F0.list.filter((s) => wants(s.key));
   F0.titles = F0.titles || {};
   for (const s of active) F0.titles[s.key] = { title: s.title, group: s.group };
   const activeKeys = new Set(active.map((s) => s.key));
@@ -1124,6 +1212,7 @@ async function runOddsApi() {
     if (!r.ok && r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 429) r = await getJSON(`${base}&regions=us`, { tries: 1 });   // some plans reject a book list
     if (!r.ok || !Array.isArray(r.data)) {
       fails++; lastErr = r.status === 429 ? 'out of credits or too many requests' : (r.error || shape(r.data));
+      if (r.status === 401) { lastErr = 'The key was rejected. Check the ODDS_API_KEY secret.'; delete F0.list_at; }
       if (r.status === 401 || r.status === 429) break;
       continue;
     }
@@ -1141,9 +1230,15 @@ async function runParlay(activeKeys) {
   const name = 'ParlayAPI';
   if (!PARLAY_KEY) { src(name, { ok: null, note: 'Optional second feed. Add the PARLAY_API_KEY secret to turn it on.' }); return; }
   const H = { headers: { 'X-API-Key': PARLAY_KEY } };
-  const sp = await getJSON(`${B.parlay}/v1/sports`, H);
-  const list = sp.ok ? (Array.isArray(sp.data) ? sp.data : sp.data.sports || sp.data.data) : null;
-  if (!Array.isArray(list)) { src(name, { ok: false, error: sp.status === 401 || sp.status === 403 ? 'The key was rejected. Check the PARLAY_API_KEY secret.' : 'sports list: ' + (sp.error || shape(sp.data)) }); return; }
+  const P0 = state.feeds.parlay = state.feeds.parlay || { sports: {} };
+  if (!P0.list || !P0.list_at || NOW - Date.parse(P0.list_at) > 3 * HOUR) {
+    const sp = await getJSON(`${B.parlay}/v1/sports`, H);
+    const got = sp.ok ? (Array.isArray(sp.data) ? sp.data : sp.data.sports || sp.data.data) : null;
+    if (!Array.isArray(got)) { src(name, { ok: false, error: sp.status === 401 || sp.status === 403 ? 'The key was rejected. Check the PARLAY_API_KEY secret.' : 'sports list: ' + (sp.error || shape(sp.data)) }); return; }
+    P0.list = got.filter((s) => s && s.key).map((s) => ({ key: s.key, title: s.title, active: s.active, has_outrights: s.has_outrights }));
+    P0.list_at = iso(NOW);
+  }
+  const list = P0.list;
   const golf = list.filter((s) => s && s.key && /golf|pga/i.test(s.key + ' ' + (s.title || '')));
   const cands = [];
   for (const s of list) {
@@ -1162,6 +1257,7 @@ async function runParlay(activeKeys) {
     const data = r.ok ? (Array.isArray(r.data) ? r.data : r.data.data || r.data.events) : null;
     if (!Array.isArray(data)) {
       fails++; lastErr = r.error || 'unexpected reply: ' + shape(r.data);
+      if (r.status === 401 || r.status === 403) { lastErr = 'The key was rejected. Check the PARLAY_API_KEY secret.'; delete P0.list_at; }
       if (r.status === 401 || r.status === 403 || r.status === 429) break;
       continue;
     }
@@ -1264,9 +1360,12 @@ async function runInjuries() {
   for (const key of Object.keys(LEAGUES)) {
     const lg = LEAGUES[key];
     if (!lg.inj || !wants(key) || !Object.values(state.events).some((e) => e.sport_key === key && e.espn && Date.parse(e.commence_time) > NOW)) continue;
+    const kept = state.inj[key];
+    if (kept && NOW - Date.parse(kept.at) < 45 * 60e3) { injuries[key] = kept.map; total += kept.n; ok++; continue; }
     const r = await getJSON(`${B.espn}/${lg.espn}/injuries`);
-    if (!r.ok || !Array.isArray(r.data.injuries)) { fail++; lastErr = r.error || shape(r.data); continue; }
+    if (!r.ok || !Array.isArray(r.data.injuries)) { fail++; lastErr = r.error || shape(r.data); if (kept && NOW - Date.parse(kept.at) < 8 * HOUR) injuries[key] = kept.map; continue; }
     ok++;
+    let nKey = 0;
     const map = injuries[key] = {};
     for (const t of r.data.injuries) {
       const arr = [];
@@ -1275,8 +1374,9 @@ async function runInjuries() {
         if (!s || !i.athlete) continue;
         arr.push({ n: i.athlete.displayName, pos: (i.athlete.position && i.athlete.position.abbreviation) || '', s, date: i.date || null, why: (i.details && i.details.type) || '' });
       }
-      map[String(t.id)] = arr; total += arr.length;
+      map[String(t.id)] = arr; total += arr.length; nKey += arr.length;
     }
+    state.inj[key] = { at: iso(NOW), n: nKey, map };
   }
   if (ok + fail) src('ESPN injuries', { ok: fail === 0 ? true : ok ? 'partial' : false, items: total + ' players out or questionable', note: ok + ' leagues', error: lastErr });
 }
@@ -1530,6 +1630,15 @@ function stripCtx(ctx) {
 // =====================================================================================
 // LINE HISTORY, PICKS, GRADING
 // =====================================================================================
+// A game counts toward edges, value bets and the record only if it is an official one:
+// not preseason or an exhibition, and (in leagues ESPN covers) on ESPN's schedule for that league.
+function excludedWhy(ev) {
+  if (ev.outright) return null;
+  if (ev.exh) return ev.exh === 'Preseason' ? 'preseason' : 'exhibition';
+  const lg = LEAGUES[ev.sport_key];
+  if (lg && lg.kind !== 'fights' && !ev.espn) return 'unlisted';
+  return null;
+}
 function publicEvent(ev) {
   const bookmakers = Object.keys(ev.books).map((k) => ({ key: k, title: ev.books[k].title, last_update: ev.books[k].last_update, src: ev.books[k].src, markets: ev.books[k].markets }));
   const out = { id: ev.id, sport_key: ev.sport_key, sport_title: LEAGUES[ev.sport_key] ? LEAGUES[ev.sport_key].title : ev.sport_title, commence_time: ev.commence_time, home_team: ev.home_team, away_team: ev.away_team, bookmakers };
@@ -1542,7 +1651,9 @@ function publicEvent(ev) {
   if (ev.hist && Object.keys(ev.hist).length) out.hist = ev.hist;
   if (ev.open) out.open = ev.open;
   if (ev.final) out.final = ev.final;
-  out.gradeable = !!(ev.espn && LEAGUES[ev.sport_key]);
+  const why = excludedWhy(ev);
+  if (why) out.excluded = why;
+  out.gradeable = !!(ev.espn && LEAGUES[ev.sport_key]) && !why;
   return out;
 }
 function track(ev, an) {
@@ -1604,7 +1715,9 @@ async function main() {
   const activeKeys = await runOddsApi();
   await runEspn(activeKeys);
   await runParlay(activeKeys);
+  let merged = mergeDuplicates();
   const espnLines = espnIntoStore();
+  merged += mergeDuplicates();          // ESPN's own copy of a game, once its link shows which one it is
   if (!ODDS_KEY && !PARLAY_KEY) src('The Odds API', { ok: false, error: 'No odds key set yet, so the board only has ESPN’s DraftKings line (' + espnLines + ' games). Add the ODDS_API_KEY secret to compare books.' });
   await runKalshi();
   await runInjuries();
@@ -1615,7 +1728,7 @@ async function main() {
   for (const ev of Object.values(state.events)) {
     const t = Date.parse(ev.commence_time);
     const pending = picksFile.picks.some((p) => p.event_id === ev.id && p.status === 'pending');
-    if ((!ev.outright && t < NOW - (pending ? 6 : 1.5) * DAY) || (ev.outright && t < NOW - 12 * DAY) || (!Object.keys(ev.books).length && !pending && t > NOW && NOW - Date.parse(ev.first_seen) > DAY)) {
+    if ((!ev.outright && sideMarket(ev.home_team, ev.away_team)) || (!ev.outright && t < NOW - (pending ? 6 : 1.5) * DAY) || (ev.outright && t < NOW - 12 * DAY) || (!Object.keys(ev.books).length && !pending && t > NOW && NOW - Date.parse(ev.first_seen) > DAY)) {
       for (const k of Object.values(ev.ids || {})) idIndex.delete(k);
       delete state.events[ev.id];
     }
@@ -1629,7 +1742,7 @@ async function main() {
   for (const ev of evs) {
     const t = Date.parse(ev.commence_time);
     if (!Object.keys(ev.books).length) continue;                // nothing to show; kept only so a pending pick can be graded
-    if (t > NOW) { await buildModel(ev); if (ev.model) withModel++; }
+    if (t > NOW && !excludedWhy(ev)) { await buildModel(ev); if (ev.model) withModel++; } else { ev.model = null; ev.context = null; }
     const pub = publicEvent(ev);
     if (t > NOW || ev.outright) {
       const an0 = FL.analyzeEvent(pub, { modelTrust: 0 });
@@ -1640,6 +1753,10 @@ async function main() {
     const espnOnly = Object.values(ev.books).every((b) => b.src === 'espn');
     if (ev.outright ? t > NOW - 2 * DAY : t > NOW - 8 * HOUR && t < NOW + (espnOnly ? 3 : 8.5) * DAY) out.push(pub);
   }
+
+  // a pending pick on a game since marked preseason or exhibition is taken off the record
+  let dropped = 0;
+  picksFile.picks = picksFile.picks.filter((p) => { const ev = p.status === 'pending' && state.events[p.event_id]; if (ev && ev.exh) { dropped++; return false; } return true; });
 
   // closing-line check for pending picks: compare the price taken with the latest fair line
   const byId = new Map(upcoming.map((u) => [u.ev.id, u]));
@@ -1675,9 +1792,10 @@ async function main() {
   }
   if (picksFile.picks.length > 3000) picksFile.picks.splice(0, picksFile.picks.length - 3000);
   const summary = summarize(picksFile.picks);
-  src('Picks and grading', { ok: true, items: summary.all.graded + ' graded, ' + summary.pending + ' pending', note: logged + ' new this run' + (recordCleared ? '. Record restarted: ' + recordCleared + ' earlier picks cleared' : '') });
-  const unlinked = upcoming.filter((u) => !u.ev.outright && LEAGUES[u.ev.sport_key] && !u.ev.espn).length;
-  src('Stats model', { ok: withModel > 0 ? true : null, items: withModel + ' of ' + upcoming.filter((u) => !u.ev.outright).length + ' upcoming games have a model', note: 'ratings, rest, injuries, starters and weather where available' + (unlinked ? '. ' + unlinked + ' games could not be matched to ESPN\u2019s schedule' : '') });
+  src('Picks and grading', { ok: true, items: summary.all.graded + ' graded, ' + summary.pending + ' pending', note: logged + ' new this run' + (dropped ? '. ' + dropped + ' removed: preseason or exhibition games' : '') + (recordCleared ? '. Record restarted: ' + recordCleared + ' earlier picks cleared' : '') });
+  const nPre = upcoming.filter((u) => u.pub.excluded === 'preseason' || u.pub.excluded === 'exhibition').length, nUn = upcoming.filter((u) => u.pub.excluded === 'unlisted').length;
+  src('Games left out', { ok: true, items: nPre + ' preseason or exhibition, ' + nUn + ' not on ESPN\u2019s schedule', note: 'Shown on the Board without edges; never a value bet and never logged.' + (merged ? ' ' + merged + ' duplicate listings merged.' : '') });
+  src('Stats model', { ok: withModel > 0 ? true : null, items: withModel + ' of ' + upcoming.filter((u) => !u.ev.outright).length + ' upcoming games have a model', note: 'ratings, rest, injuries, starters and weather where available' + (false ? '. ' + 0 + ' games could not be matched to ESPN\u2019s schedule' : '') });
 
   // sport list for the app, in your order
   const sports = {};
@@ -1685,10 +1803,16 @@ async function main() {
   const feeds = {};
   for (const f of ['oddsapi', 'parlay']) if (state.feeds[f]) feeds[f] = { remaining: state.feeds[f].remaining == null ? null : state.feeds[f].remaining, per_day: state.feeds[f].per_day, sports: state.feeds[f].sports };
 
+  // A short trail of recent runs. The repository keeps only the latest data save, so the trail lives in the data itself.
+  const failing = Object.keys(status.sources).filter((k) => status.sources[k].ok === false);
+  const trail = { t: iso(NOW), o: state.feeds.oddsapi && state.feeds.oddsapi.remaining != null ? state.feeds.oddsapi.remaining : null, p: state.feeds.parlay && state.feeds.parlay.remaining != null ? state.feeds.parlay.remaining : null,
+    n: Object.values(status.calls).reduce((a, b) => a + b, 0), pk: logged };
+  if (failing.length) trail.bad = failing;
+  state.runlog = (state.runlog || []).concat([trail]).slice(-120);
   state.last_run = iso(NOW);
   for (const ev of Object.values(state.events)) { delete ev.model; delete ev.context; delete ev.model_note; delete ev.books; delete ev.hist; delete ev.open; }   // rebuilt, or kept in latest.json
   status.runs = (state.runs = (state.runs || 0) + 1);
-  writeJSON('latest.json', { version: 2, generated_at: iso(NOW), status, feeds, my_books: CONFIG.myBooks, pick: CONFIG.pick, sports: Object.values(sports).sort((a, b) => a.rank - b.rank), record: sportRec, events: out });
+  writeJSON('latest.json', { version: 2, generated_at: iso(NOW), status, feeds, my_books: CONFIG.myBooks, pick: CONFIG.pick, sports: Object.values(sports).sort((a, b) => a.rank - b.rank), record: sportRec, runlog: state.runlog, events: out });
   writeJSON('picks.json', { updated_at: iso(NOW), reset: picksFile.reset, started_at: picksFile.started_at, summary, picks: picksFile.picks });
   writeJSON('state.json', state);
   log('events on the board:', out.length, '| with a model:', withModel, '| new picks:', logged, '| requests:', JSON.stringify(status.calls));

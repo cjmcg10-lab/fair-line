@@ -291,6 +291,18 @@ details > summary::-webkit-details-marker { display: none; }
 .picks .alloc .num { font-weight: 600; font-size: 13.5px; }
 .picks td b + .num { white-space: nowrap; }
 .cmp tr.on td { font-weight: 700; } .cmp td:first-child { white-space: nowrap; }
+/* ---- games left out, and removing bets ---- */
+.skipnote { margin: 0 0 8px; font-size: 12.5px; color: var(--ink-2); }
+.sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.sec-h small { margin-left: 0; }
+.edit { margin-left: auto; border: 1px solid var(--rule); background: var(--card); border-radius: 7px; padding: 5px 10px; font-family: var(--body); font-stretch: 100%; font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--accent); }
+.edit[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.editnote { margin: 0; }
+.rm { margin-top: 5px; border: 1px solid var(--bad); background: var(--bad-bg); color: var(--bad); border-radius: 6px; padding: 4px 9px; font-size: 12px; font-weight: 700; }
+.outlist { list-style: none; margin: 0 0 10px; padding: 0; }
+.outlist li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 13.5px; }
+.outlist li:first-child { border-top: 0; }
+.outlist .btn, .removed > .btn { flex: none; background: var(--card); }
 </style>
 
 <header class="top">
@@ -703,6 +715,7 @@ details > summary::-webkit-details-marker { display: none; }
     var recs = [];
     analyses.forEach(function (an) {
       var ev = an.event;
+      if (ev.excluded) return;                                   // preseason, exhibition or not on the league's schedule
       if (Date.parse(ev.commence_time) <= opts.now) return;      // pregame only: once it starts, saved prices are closed
       MARKETS.forEach(function (mk) {
         var m = an.markets[mk]; if (!m) return;
@@ -734,6 +747,7 @@ details > summary::-webkit-details-marker { display: none; }
     }
     analyses.forEach(function (an) {
       var ev = an.event;
+      if (ev.excluded) return;
       if (Date.parse(ev.commence_time) <= opts.now) return;
       var h = an.markets.h2h;
       if (h) {
@@ -810,15 +824,16 @@ details > summary::-webkit-details-marker { display: none; }
   var DEF = { minEdge: 0.02, minConf: 50, modelTrust: 0.15, stake: 1, sizing: 'conf' };
   var MARKETS = [{ key: 'h2h', name: 'Moneyline' }, { key: 'spreads', name: 'Spread' }, { key: 'totals', name: 'Total' }];
   var MK_NAME = { h2h: 'moneyline', spreads: 'spread', totals: 'total', outrights: 'winner' };
-  var state = { tab: 'board', sport: 'all', market: 'h2h', books: null, usState: '', minEdge: DEF.minEdge, minConf: DEF.minConf, modelTrust: DEF.modelTrust, stake: DEF.stake, sizing: DEF.sizing, ddOpen: false };
+  var state = { tab: 'board', sport: 'all', market: 'h2h', books: null, usState: '', minEdge: DEF.minEdge, minConf: DEF.minConf, modelTrust: DEF.modelTrust, stake: DEF.stake, sizing: DEF.sizing, removed: [], editing: false, ddOpen: false };
   try {
     var saved = JSON.parse(localStorage.getItem('fairline:v2') || 'null');
-    if (saved) ['sport', 'market', 'books', 'usState', 'minEdge', 'minConf', 'modelTrust', 'sizing'].forEach(function (k) { if (saved[k] != null) state[k] = saved[k]; });
+    if (saved) ['sport', 'market', 'books', 'usState', 'minEdge', 'minConf', 'modelTrust', 'sizing', 'removed'].forEach(function (k) { if (saved[k] != null) state[k] = saved[k]; });
+    if (!Array.isArray(state.removed)) state.removed = [];
     if (saved && saved.sv === 2 && saved.stake > 0) state.stake = saved.stake;   // stakes saved before the $1 default are not carried over
     if (['flat', 'conf', 'kelly'].indexOf(state.sizing) < 0) state.sizing = DEF.sizing;
   } catch (e) {}
   function save() {
-    try { localStorage.setItem('fairline:v2', JSON.stringify({ sport: state.sport, market: state.market, books: state.books, usState: state.usState, minEdge: state.minEdge, minConf: state.minConf, modelTrust: state.modelTrust, stake: state.stake, sizing: state.sizing, sv: 2 })); } catch (e) {}
+    try { localStorage.setItem('fairline:v2', JSON.stringify({ sport: state.sport, market: state.market, books: state.books, usState: state.usState, minEdge: state.minEdge, minConf: state.minConf, modelTrust: state.modelTrust, stake: state.stake, sizing: state.sizing, removed: state.removed, sv: 2 })); } catch (e) {}
   }
   var hash = (location.hash || '').replace('#', '');
   if (['board', 'value', 'record', 'data'].indexOf(hash) >= 0) state.tab = hash;
@@ -873,7 +888,7 @@ details > summary::-webkit-details-marker { display: none; }
   function noticeHtml() {
     var a = ageMin();
     if (DATA.preview) return '<div class="notice"><span><b>Preview on saved prices.</b> Captured ' + esc(fmtCap.format(Date.parse(DATA.preview.captured_at))) + ', <span id="noticeAge">' + esc(FL.fmtAge(a)) + '</span> ago. ' + esc(DATA.preview.note || '') + '</span><button class="link" type="button" data-go="data">What’s live and what isn’t</button></div>';
-    if (a > 5 * 60) return '<div class="notice"><span><b>Prices are <span id="noticeAge">' + esc(FL.fmtAge(a)) + '</span> old.</b> The updater may have stopped. Confirm any price in the sportsbook before you bet.</span><button class="link" type="button" data-go="data">Check the sources</button></div>';
+    if (a > 2 * 60) return '<div class="notice"><span><b>Prices are <span id="noticeAge">' + esc(FL.fmtAge(a)) + '</span> old.</b> The updater may have stopped. Confirm any price in the sportsbook before you bet.</span><button class="link" type="button" data-go="data">Check the sources</button></div>';
     return '';
   }
   function upcomingBySport(now) {
@@ -996,24 +1011,30 @@ details > summary::-webkit-details-marker { display: none; }
     if (m.outcomes.length > 10) h += '<details class="more" data-k="o-' + esc(ev.id) + '"><summary>The other ' + (m.outcomes.length - 10) + ' players</summary><div class="scroll"><table class="out-t"><tbody>' + m.outcomes.slice(10).map(row).join('') + '</tbody></table></div></details>';
     return h + '<p class="foot-note">Fair price is the middle of ' + m.nBooks + ' books with their margin removed. Winner markets carry big margins and books disagree a lot, so small edges here mean little.</p></article>';
   }
+  var SKIP_TAG = { preseason: 'Preseason', exhibition: 'Exhibition', unlisted: 'Not rated' };
+  var SKIP_WHY = { preseason: 'Preseason game.', exhibition: 'All-star or exhibition game.', unlisted: 'Not on ESPN’s schedule for this league, so it may be a reserve, lower-division or exhibition game.' };
   function gameCard(an, now) {
     var ev = an.event;
     if (ev.outright) return outrightCard(an, now);
-    var mk = state.market, m = an.markets[mk], bs = bookSet(), isStarted = started(ev, now);
+    var mk = state.market, m = an.markets[mk], bs = bookSet(), isStarted = started(ev, now), skip = ev.excluded || '';
     var h = '<article class="game' + (isStarted ? ' started' : '') + '"><div class="g-head"><span><span class="when">' + esc(when(ev)) + '</span> · ' + esc(nm(ev, 'away')) + ' at ' + esc(nm(ev, 'home')) + '</span>';
     var rows = '', bestEv = -1;
     if (m) m.outcomes.forEach(function (oc) {
       var o = FL.bestOffer(oc, bs);
       if (!o) { rows += '<tr><td>' + esc(outLabel(ev, mk, oc, oc.point)) + '</td><td colspan="3" class="muted">not priced by your books</td></tr>'; return; }
+      if (skip) { rows += '<tr><td>' + esc(outLabel(ev, mk, oc, o.point)) + '</td><td><span class="num">' + FL.fmtAm(o.price) + '</span><span class="bk">' + esc(codeOf(o.book)) + '</span></td><td class="fair"><span class="muted">–</span></td><td class="edge">–</td></tr>'; return; }
       if (o.ev != null && !o.moved && o.ev > bestEv) bestEv = o.ev;
       var fair = o.pApp == null ? '<span class="muted">–</span>' : FL.fmtAm(FL.probToAm(o.pApp)) + '<small>' + pct(o.pApp, 1) + '</small>';
       rows += '<tr><td>' + esc(outLabel(ev, mk, oc, o.point)) + '</td><td><span class="best">' + FL.fmtAm(o.price) + '</span><span class="bk">' + esc(codeOf(o.book)) + '</span>' + (o.moved ? '<span class="tagm" title="A fresher price elsewhere has moved">moved?</span>' : '') + '</td><td class="fair">' + fair + '</td><td class="edge' + (o.ev != null && !o.moved && o.ev >= state.minEdge ? ' pos' : '') + '">' + (o.ev == null ? '–' : edgeTxt(o.ev)) + '</td></tr>';
     });
     if (isStarted) h += '<span class="pill mute">' + (ev.final && ev.final.home != null ? 'Final ' + ev.final.away + '–' + ev.final.home : 'Started') + '</span>';
+    else if (skip) h += '<span class="pill warn">' + SKIP_TAG[skip] + '</span>';
     else if (bestEv >= state.minEdge) h += '<span class="pill good">' + edgeTxt(bestEv) + ' edge</span>';
-    h += '</div>' + (isStarted ? '' : facts(ev));
+    h += '</div>' + (isStarted || skip ? '' : facts(ev));
+    if (skip) h += '<p class="skipnote">' + SKIP_WHY[skip] + ' No edge is worked out, and it is left out of value bets and the record.</p>';
     if (!m) return h + '<div class="none">No ' + MK_NAME[mk] + ' prices for this game.</div></article>';
     h += '<table class="lines"><thead><tr><th>' + (mk === 'totals' ? 'Total' : 'Team') + '</th><th>Best price</th><th>App fair</th><th>Edge</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    if (skip) return h + '</article>';
     if (!isStarted) h += moveHtml(ev, mk);
 
     // every book
@@ -1054,14 +1075,15 @@ details > summary::-webkit-details-marker { display: none; }
     if (!(DATA.events || []).length) return h + '<div class="empty"><h3>No games on the board yet</h3><p>The updater has run but found nothing to show. Open the Data tab to see what each source reported.</p></div>';
     (DATA.sports || []).forEach(function (s) {
       if (state.sport !== 'all' && state.sport !== s.key) return;
-      var list = analyses.filter(function (a) { return a.event.sport_key === s.key; }).sort(function (a, b) { return (started(a.event, now) ? 1 : 0) - (started(b.event, now) ? 1 : 0) || Date.parse(a.event.commence_time) - Date.parse(b.event.commence_time); });
+      var grp = function (a) { return started(a.event, now) ? 2 : a.event.excluded ? 1 : 0; };      // official games first, then games left out, then started ones
+      var list = analyses.filter(function (a) { return a.event.sport_key === s.key; }).sort(function (a, b) { return grp(a) - grp(b) || Date.parse(a.event.commence_time) - Date.parse(b.event.commence_time); });
       if (!list.length) return;
       var isOut = list[0].event.outright;
       var cap = state.sport === 'all' ? 6 : 400, shown = list.slice(0, cap);
       h += '<h2 class="grp-h">' + esc(s.title) + '<small>' + list.length + (isOut ? (list.length === 1 ? ' market' : ' markets') : list.length === 1 ? ' game' : ' games') + ' · ' + (s.model ? 'market + stats model' : 'market only') + '</small></h2>';
       var day = null, open = false;
       shown.forEach(function (a) {
-        var d = isOut ? '' : started(a.event, now) ? 'Started' : fmtDay.format(Date.parse(a.event.commence_time));
+        var d = isOut ? '' : started(a.event, now) ? 'Started' : a.event.excluded ? 'Left out: preseason, exhibition or off-schedule' : fmtDay.format(Date.parse(a.event.commence_time));
         if (d !== day) { if (open) h += '</div>'; h += (d ? '<h3 class="day-h">' + esc(d) + '</h3>' : '') + '<div class="grid">'; open = true; day = d; }
         h += gameCard(a, now);
       });
@@ -1118,7 +1140,7 @@ details > summary::-webkit-details-marker { display: none; }
     var recs = recsAll.filter(function (r) { return inSport(r.event); });
     var ok = recs.filter(function (r) { return r.conf.score >= state.minConf; }), low = recs.filter(function (r) { return r.conf.score < state.minConf; });
     var arbs = arbsAll.filter(function (a) { return inSport(a.event); });
-    var upcoming = (DATA.events || []).filter(function (e) { return !started(e, now) && inSport(e); }).length;
+    var upcoming = (DATA.events || []).filter(function (e) { return !started(e, now) && inSport(e) && !e.excluded; }).length;
     var priceOnly = ok.filter(function (r) { return r.offer.evMkt != null && r.offer.evMkt >= state.minEdge; }).length;
     if (!state.books.length) return h + '<div class="empty"><h3>No sportsbooks selected</h3><p>Open the Sportsbooks menu and switch on at least one book.</p></div>';
     if (!upcoming) return h + '<div class="empty"><h3>No upcoming games here</h3><p>Every game in this list has started, so there is nothing to recommend. The next update brings in new games.</p></div>';
@@ -1263,7 +1285,10 @@ details > summary::-webkit-details-marker { display: none; }
     });
   }
   function recordHtml() {
-    var P = (PICKS && PICKS.picks) || [];
+    // Bets the user has taken off the record (remembered on this device) are left out of every total below.
+    var ALL = (PICKS && PICKS.picks) || [], gone = {};
+    (state.removed || []).forEach(function (id) { gone[id] = 1; });
+    var P = ALL.filter(function (p) { return !gone[p.id]; }), OUT = ALL.filter(function (p) { return gone[p.id]; });
     var TT = { flat: tally(P, 'flat'), conf: tally(P, 'conf'), kelly: tally(P, 'kelly') }, T = TT[state.sizing], A = T.all;
     var minE = (((DATA.pick && DATA.pick.minEdge) || 0.02) * 100).toFixed(0), minC = (DATA.pick && DATA.pick.minConf) || 50;
     CH = null;
@@ -1277,7 +1302,7 @@ details > summary::-webkit-details-marker { display: none; }
     if (!A.graded) h += '<h2>Nothing has been graded yet</h2><p>The app logs a paper bet each time a price at your default books clears the default bar (edge ≥ ' + minE + '%, confidence ≥ ' + minC + '). ' + (wait || 'None has been logged so far.') + '</p>';
     else h += '<h2>How the picks have done</h2><p>' + A.graded + ' paper ' + (A.graded === 1 ? 'bet' : 'bets') + ', <b>' + money(A.staked) + '</b> staked in total, <b>' + money(A.profit, true) + '</b> profit. That is ' + edgeTxt(A.roi) + ' on the money staked.' +
       (A.graded < 200 ? ' That is too few bets to tell skill from luck; a few hundred are needed.' : '') + (wait ? ' ' + wait : '') + '</p>';
-    if (PICKS && PICKS.started_at) h += '<p class="muted small">Record started ' + esc(fmtCap.format(Date.parse(PICKS.started_at))) + '. Only bets logged since then are counted.</p>';
+    if (PICKS && PICKS.started_at) h += '<p class="muted small">Record started ' + esc(fmtCap.format(Date.parse(PICKS.started_at))) + '. Only bets logged since then are counted.' + (OUT.length ? ' ' + OUT.length + (OUT.length === 1 ? ' bet you removed is' : ' bets you removed are') + ' left out.' : '') + '</p>';
     h += '</div></div>';
     if (A.graded) {
       h += '<h2 class="sec-h">Running profit<small>' + A.graded + (A.graded === 1 ? ' bet' : ' bets') + ', sized three ways</small></h2><div class="chartcard">' + chartHtml(TT);
@@ -1299,20 +1324,31 @@ details > summary::-webkit-details-marker { display: none; }
       h += table('Sport', Object.keys(T.bySport).map(function (k) { return [T.titles[k] || k, T.bySport[k]]; }).sort(function (a, b) { return b[1].graded - a[1].graded; }));
       h += table('Confidence', ['High', 'Medium', 'Low'].filter(function (k) { return T.byConf[k].graded; }).map(function (k) { return [k, T.byConf[k]]; }));
     }
+    if (!P.length && OUT.length) h += '<h2 class="sec-h">Picks<small>none left</small></h2>';
     if (P.length) {
       var recent = P.slice().sort(function (a, b) { return Date.parse(b.commence_time) - Date.parse(a.commence_time); }).slice(0, 80);
-      h += '<h2 class="sec-h">Picks<small>latest ' + recent.length + ' of ' + P.length + '</small></h2><div class="scroll"><table class="plain picks"><thead><tr><th>Pick</th><th>Game</th><th class="r">Allocation</th><th class="r">Result</th></tr></thead><tbody>';
+      h += '<h2 class="sec-h">Picks<small>latest ' + recent.length + ' of ' + P.length + '</small><button type="button" class="edit" data-edit="1" aria-pressed="' + !!state.editing + '">' + (state.editing ? 'Done' : 'Remove bets') + '</button></h2>' +
+        (state.editing ? '<p class="muted small editnote">Tap Remove on any bet to take it out of the record. You can put it back from the list under the table.</p>' : '') + '<div class="scroll"><table class="plain picks' + (state.editing ? ' editing' : '') + '"><thead><tr><th>Pick</th><th>Game</th><th class="r">Allocation</th><th class="r">Result</th></tr></thead><tbody>';
       recent.forEach(function (p) {
         var st = stakeFor(betOf(p)), pr = profitOf(p, st), share = Math.round(st / state.stake * 100);
         var cls = p.status === 'won' ? 'good' : p.status === 'lost' ? 'bad' : 'mute';
         var res = p.status === 'pending' ? 'Pending' : p.status === 'won' ? 'Won' : p.status === 'lost' ? 'Lost' : p.status === 'push' ? 'Push' : 'No result';
         var amt = p.status === 'won' || p.status === 'lost' || p.status === 'push' ? '<br><span class="num amt">' + money(pr, true) + '</span>' : '';
-        h += '<tr><td><b>' + esc(p.label) + '</b> <span class="num">' + FL.fmtAm(p.price) + '</span><br><span class="muted small">' + esc(p.book_title || p.book) + '<br>edge ' + edgeTxt(p.ev) + (p.clv == null ? '' : '<br>' + (p.status === 'pending' ? 'line so far ' : 'vs close ') + edgeTxt(p.clv)) + '</span></td>' +
+        h += '<tr><td><b>' + esc(p.label) + '</b> <span class="num">' + FL.fmtAm(p.price) + '</span><br><span class="muted small">' + esc(p.book_title || p.book) + '<br>edge ' + edgeTxt(p.ev) + (p.clv == null ? '' : '<br>' + (p.status === 'pending' ? 'line so far ' : 'vs close ') + edgeTxt(p.clv)) + '</span>' +
+          (state.editing ? '<br><button type="button" class="rm" data-rm="' + esc(p.id) + '" aria-label="Remove ' + esc(p.label) + ' from the record">Remove</button>' : '') + '</td>' +
           '<td>' + esc(p.away) + ' at ' + esc(p.home) + '<br><span class="muted small">' + esc(p.sport_title) + ' · ' + esc(fmtDate.format(Date.parse(p.commence_time))) + (p.score ? '<br>' + esc(p.score) : '') + '</span></td>' +
           '<td class="r alloc">' + (p.status === 'void' ? '<span class="muted">–</span>' : '<span class="num">' + money(st) + '</span><br><span class="muted small">' + share + '% of base</span>') + '</td>' +
           '<td class="r"><span class="pill ' + cls + '">' + res + '</span>' + amt + '<br><span class="muted small">conf ' + p.conf + '</span></td></tr>';
       });
       h += '</tbody></table></div>';
+    }
+    if (OUT.length) {
+      h += '<details class="below removed" data-k="removed"><summary>' + OUT.length + (OUT.length === 1 ? ' bet' : ' bets') + ' removed from the record</summary><ul class="outlist">';
+      OUT.slice().sort(function (a, b) { return Date.parse(b.commence_time) - Date.parse(a.commence_time); }).forEach(function (p) {
+        h += '<li><span><b>' + esc(p.label) + '</b> <span class="num">' + FL.fmtAm(p.price) + '</span><br><span class="muted small">' + esc(p.away) + ' at ' + esc(p.home) + ' · ' + esc(fmtDate.format(Date.parse(p.commence_time))) + ' · ' + (p.status === 'pending' ? 'pending' : esc(p.status)) + '</span></span>' +
+          '<button type="button" class="btn" data-unrm="' + esc(p.id) + '">Put back</button></li>';
+      });
+      h += '</ul>' + (OUT.length > 1 ? '<button type="button" class="btn" data-unrm="*">Put all back</button>' : '') + '</details>';
     }
     h += '<div class="doc"><div><h2>How to read this page</h2><ul>' +
       '<li><b>Profit</b> is what the paper bets would have made in dollars. On a ' + money(state.stake) + ' stake, a winning +150 bet earns ' + money(state.stake * 1.5) + ', a losing bet costs the ' + money(state.stake) + ', and a push returns the stake.</li>' +
@@ -1323,6 +1359,7 @@ details > summary::-webkit-details-marker { display: none; }
       '<li><b>Beat the close by</b> compares the price the app took with the fair line the last time it was seen before the game. Positive means the market moved toward the pick. It is the fastest fair test of a betting method, and it shows up long before profit does.</li>' +
       '<li><b>A few picks prove nothing.</b> With edges of 2 to 4%, it takes several hundred graded bets before profit can be told apart from luck.</li>' +
       '<li><b>Only game bets in sports with a results feed are tracked:</b> the major US leagues, the big soccer leagues and UFC. Golf, tennis and boxing bets appear under Value bets but are not logged here.</li>' +
+      '<li><b>Remove bets</b> takes a bet out of every total on this page. It is remembered on this device only, and the bet can be put back from the list under the table.</li>' +
       '<li><b>These are paper bets.</b> The app never places a bet. An allocation is a sizing rule applied to picks that are not yet proven, so only bet what you can afford to lose.</li></ul></div></div>';
     return h;
   }
@@ -1330,7 +1367,7 @@ details > summary::-webkit-details-marker { display: none; }
   // ---------- data ----------
   function dataHtml() {
     var st = DATA.status || { sources: {} }, h = '<div class="doc">';
-    h += '<div><h2>What each source reported</h2><p class="muted small">Last update ' + esc(fmtCap.format(Date.parse(DATA.generated_at))) + (st.runs ? ' · run ' + st.runs : '') + '. The updater runs about every two hours.</p><ul class="src">';
+    h += '<div><h2>What each source reported</h2><p class="muted small">Last update ' + esc(fmtCap.format(Date.parse(DATA.generated_at))) + (st.runs ? ' · run ' + st.runs : '') + '. The updater runs about every 15 minutes; GitHub sometimes starts a run late.</p><ul class="src">';
     Object.keys(st.sources || {}).forEach(function (k) {
       var s = st.sources[k], cls = s.ok === true ? 'ok' : s.ok === 'partial' ? 'part' : s.ok === false ? 'bad' : '';
       h += '<li><span class="d ' + cls + '"></span><span><b>' + esc(k) + '</b>' + (s.items ? ' · ' + esc(s.items) : '') + '</span>' + (s.note ? '<span class="how">' + esc(s.note) + '</span>' : '') + (s.error ? '<span class="err">' + esc(s.error) + '</span>' : '') + '</li>';
@@ -1338,13 +1375,15 @@ details > summary::-webkit-details-marker { display: none; }
     h += '</ul>' + (st.crash ? '<p class="err small">The last run stopped early: ' + esc(st.crash) + '</p>' : '') + '<p class="muted small">Green worked, amber partly worked, red failed, grey had nothing to do. A red source does not stop the others.</p></div>';
 
     h += '<div><h2>How fresh the prices are</h2><ul>' +
-      '<li><b>Free plans mean a few refreshes a day.</b> The updater spreads each feed’s monthly credits across the month and spends them on the sports with games coming soonest.</li>' +
+      '<li><b>Free every run:</b> DraftKings through ESPN, Kalshi, scores, and results for grading. Injuries refresh about every 45 minutes.</li>' +
+      '<li><b>The many-book feeds are limited by credits, not by the schedule.</b> Their free plans allow roughly 20 to 25 sport refreshes a day in total. The updater spreads them across the month, spends them on the sports with games coming soonest, and has the two feeds take turns on a sport.</li>' +
       '<li><b>Books are captured at different times.</b> The fair line always comes from one group of books captured together. A price that is fresher or older than that group is flagged, and is never recommended if it looks like the market moved.</li>' +
-      '<li><b>DraftKings through ESPN refreshes every run</b> and is the app’s check on whether the market has moved since the other books were captured.</li>' +
+      '<li><b>DraftKings through ESPN</b> is the app’s check on whether the market has moved since the other books were captured.</li>' +
       '<li><b>Always confirm the price in the sportsbook.</b> The app never places a bet.</li></ul></div>';
 
     h += '<div><h2>What the app’s own odds are built from</h2><ul>' +
       '<li><b>The market does most of the work.</b> The app’s odds start from the books’ prices with their margin removed, then lean ' + Math.round(state.modelTrust * 100) + '% toward the stats model. You can change that under Value bets.</li>' +
+      '<li><b>Only official games count.</b> Preseason, all-star and exhibition games, and games that are not on ESPN’s schedule for their league, stay on the Board with prices only. They get no edge, are never a value bet, and are never logged. Preseason results do not move the team ratings.</li>' +
       '<li><b>Team ratings</b> are fitted from the last two seasons of results for the NFL, college football, NBA, WNBA, college basketball, NHL, MLB and seven soccer competitions, then updated after every game.</li>' +
       '<li><b>Injuries:</b> a starting NFL quarterback or an NBA starter listed as out moves the model line. Other injuries are shown but only counted lightly.</li>' +
       '<li><b>Rest:</b> second night in a row in the NBA and NHL, short weeks and byes in the NFL.</li>' +
@@ -1372,7 +1411,7 @@ details > summary::-webkit-details-marker { display: none; }
     $('valueCt').textContent = recsAll.filter(function (r) { return r.conf.score >= state.minConf; }).length + arbsAll.length;
     var a = ageMin(), bad = Object.keys((DATA.status && DATA.status.sources) || {}).some(function (k) { return DATA.status.sources[k].ok === false; });
     $('snapTxt').textContent = (DATA.preview ? 'Saved prices · ' : 'Updated ') + FL.fmtAge(a) + (DATA.preview ? ' old' : ' ago');
-    $('snapDot').className = 'dot' + (DATA.preview ? '' : a > 8 * 60 ? ' bad' : a > 3.5 * 60 || bad ? '' : ' ok');
+    $('snapDot').className = 'dot' + (DATA.preview ? '' : a > 3 * 60 ? ' bad' : a > 50 || bad ? '' : ' ok');
   }
   function drawOut() {
     var now = Date.now(); chrome(now);
@@ -1403,7 +1442,7 @@ details > summary::-webkit-details-marker { display: none; }
     wireChart();
   }
   function go(tab) {
-    state.tab = tab; state.ddOpen = false;
+    state.tab = tab; state.ddOpen = false; state.editing = false;
     try { history.replaceState(null, '', '#' + tab); } catch (e) {}
     draw(); window.scrollTo(0, 0);
   }
@@ -1412,10 +1451,13 @@ details > summary::-webkit-details-marker { display: none; }
   document.querySelector('.tabs').addEventListener('click', function (e) { var t = e.target.closest('.tab'); if (t) go(t.dataset.tab); });
   $('snapBtn').addEventListener('click', function () { go('data'); });
   main.addEventListener('click', function (e) {
-    var el = e.target.closest('[data-go],[data-sport],[data-market],[data-books],#booksBtn');
+    var el = e.target.closest('[data-go],[data-sport],[data-market],[data-books],[data-edit],[data-rm],[data-unrm],#booksBtn');
     if (!el || !DATA) return;
     if (el.id === 'booksBtn') { state.ddOpen = !state.ddOpen; $('booksPanel').hidden = !state.ddOpen; el.setAttribute('aria-expanded', String(state.ddOpen)); return; }
     if (el.dataset.go) return go(el.dataset.go);
+    if (el.dataset.edit) { state.editing = !state.editing; drawOut(); var eb = main.querySelector('[data-edit]'); if (eb) eb.focus(); return; }
+    if (el.dataset.rm) { if (state.removed.indexOf(el.dataset.rm) < 0) state.removed.push(el.dataset.rm); save(); return drawOut(); }
+    if (el.dataset.unrm) { state.removed = el.dataset.unrm === '*' ? [] : state.removed.filter(function (id) { return id !== el.dataset.unrm; }); save(); return drawOut(); }
     if (el.dataset.sport) { state.sport = el.dataset.sport; state.ddOpen = false; save(); draw(); if (el.classList.contains('showall')) window.scrollTo(0, 0); return; }
     if (el.dataset.market) { state.market = el.dataset.market; state.ddOpen = false; save(); return draw(); }
     if (el.dataset.books) {
@@ -1466,14 +1508,19 @@ details > summary::-webkit-details-marker { display: none; }
       DATA = d; loadErr = null;
       return getJ('data/picks.json' + bust).catch(function () { return getJ('data/picks.json'); }).catch(function () { return null; }).then(function (p) {
         PICKS = p;
+        if (p && Array.isArray(p.picks) && state.removed.length) {      // forget removals for bets that no longer exist (after the record is cleared)
+          var have = {}; p.picks.forEach(function (x) { have[x.id] = 1; });
+          var still = state.removed.filter(function (id) { return have[id]; });
+          if (still.length !== state.removed.length) { state.removed = still; save(); }
+        }
         if (changed) { setup(); price(); if (first) draw(); else drawOut(); } else drawOut();
       });
     }).catch(function (e) { if (!DATA) { loadErr = String(e && e.message || e); draw(); } });
   }
   draw(); load(true);
   setInterval(function () { if (!DATA) return; if (state.tab === 'record') chrome(Date.now()); else drawOut(); }, 60000);
-  setInterval(function () { if (!document.hidden) load(false); }, 10 * 60000);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && DATA && ageMin() > 30) load(false); });
+  setInterval(function () { if (!document.hidden) load(false); }, 2 * 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && DATA && ageMin() > 4) load(false); });
 })();
 </script>
 
