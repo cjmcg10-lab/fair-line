@@ -31,6 +31,8 @@ const CONFIG = {
   },
   // The bar a bet must clear to be logged as a pick, and how much say the stats model gets.
   pick: { minEdge: 0.02, minConf: 50, modelTrust: 0.15 },
+  // The track record. Raise this number by one to clear every logged pick and start the record again on the next run.
+  recordReset: 1,
 };
 // =====================================================================================
 
@@ -651,6 +653,13 @@ for (const k of ['feeds', 'events', 'ratings', 'sched', 'venues', 'depth', 'goal
   for (const ev of Object.values(state.events)) { ev.books = ev.books || {}; ev.hist = ev.hist || {}; }
 }
 const picksFile = readJSON('picks.json', null) || { picks: [] };
+// A record written under a different reset number (or before the number existed) is cleared and restarted now.
+const RECORD_RESET = ENV.FL_RECORD_RESET ? Number(ENV.FL_RECORD_RESET) : CONFIG.recordReset;
+let recordCleared = 0;
+if (picksFile.reset !== RECORD_RESET || !Array.isArray(picksFile.picks)) {
+  recordCleared = Array.isArray(picksFile.picks) ? picksFile.picks.length : 0;
+  picksFile.picks = []; picksFile.reset = RECORD_RESET; picksFile.started_at = iso(NOW);
+}
 const firstRun = !state.last_run;
 const gapDays = state.last_run ? Math.min(6, Math.max(0, (NOW - Date.parse(state.last_run)) / DAY)) : 0;
 
@@ -1666,7 +1675,7 @@ async function main() {
   }
   if (picksFile.picks.length > 3000) picksFile.picks.splice(0, picksFile.picks.length - 3000);
   const summary = summarize(picksFile.picks);
-  src('Picks and grading', { ok: true, items: summary.all.graded + ' graded, ' + summary.pending + ' pending', note: logged + ' new this run' });
+  src('Picks and grading', { ok: true, items: summary.all.graded + ' graded, ' + summary.pending + ' pending', note: logged + ' new this run' + (recordCleared ? '. Record restarted: ' + recordCleared + ' earlier picks cleared' : '') });
   const unlinked = upcoming.filter((u) => !u.ev.outright && LEAGUES[u.ev.sport_key] && !u.ev.espn).length;
   src('Stats model', { ok: withModel > 0 ? true : null, items: withModel + ' of ' + upcoming.filter((u) => !u.ev.outright).length + ' upcoming games have a model', note: 'ratings, rest, injuries, starters and weather where available' + (unlinked ? '. ' + unlinked + ' games could not be matched to ESPN\u2019s schedule' : '') });
 
@@ -1680,7 +1689,7 @@ async function main() {
   for (const ev of Object.values(state.events)) { delete ev.model; delete ev.context; delete ev.model_note; delete ev.books; delete ev.hist; delete ev.open; }   // rebuilt, or kept in latest.json
   status.runs = (state.runs = (state.runs || 0) + 1);
   writeJSON('latest.json', { version: 2, generated_at: iso(NOW), status, feeds, my_books: CONFIG.myBooks, pick: CONFIG.pick, sports: Object.values(sports).sort((a, b) => a.rank - b.rank), record: sportRec, events: out });
-  writeJSON('picks.json', { updated_at: iso(NOW), summary, picks: picksFile.picks });
+  writeJSON('picks.json', { updated_at: iso(NOW), reset: picksFile.reset, started_at: picksFile.started_at, summary, picks: picksFile.picks });
   writeJSON('state.json', state);
   log('events on the board:', out.length, '| with a model:', withModel, '| new picks:', logged, '| requests:', JSON.stringify(status.calls));
   for (const [k, v] of Object.entries(status.sources)) log((v.ok === true ? 'ok     ' : v.ok === 'partial' ? 'partial' : v.ok === false ? 'FAILED ' : 'idle   ') + ' ' + k + ': ' + [v.items, v.note, v.error].filter(Boolean).join(' | '));
